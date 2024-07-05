@@ -7,4 +7,4 @@ autoflake==1.7.5
 flake8==6.0.0
 google-cloud-storage==2.10.0
 tqdm==4.65.0
-apache-beam==2.57.0
+apache_beam[gcp]==2.48.0

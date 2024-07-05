@@ -1,17 +1,16 @@
 # -*- mode: makefile -*-
+build_preprocess:
+	docker build -t northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess -f bert4rec/preprocess/Dockerfile .
+	cat credentials.json | docker login -u _json_key --password-stdin https://northamerica-northeast1-docker.pkg.dev
+	docker push northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess
+
+
 install_mac_m2:
-	conda create --name=bert4rec-m2 python=3.9
-	conda activate bert4rec-m2
-	conda install -c apple tensorflow-deps
-	pip install tensorflow-macos==2.14 tensorflow-metal
-	conda install -c conda-forge --file requirements.in
+    CONDA_SUBDIR=osx-arm64 conda env create -n bert4rec-m2 -f conda-env.yaml
 
 
 install:
-	conda create --name=bert4rec python=3.9
-	conda activate bert4rec
-	conda install -c conda-forge tensorflow
-	conda install -c conda-forge --file requirements.in
+	conda env create -n bert4rec -f conda-env.yaml
 
 
 clean:

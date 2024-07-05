@@ -19,20 +19,6 @@ def _sort_views_by_timestamp(group) -> List[int]:
     return [v[0] for v in views]
 
 
-def _convert_to_timelines(
-    ratings: PCollection, data_desc: str, min_timeline_len: int = 3
-) -> Union[PCollection, Tuple[PCollection, PCollection]]:
-    """Convert ratings data to user."""
-    return (
-        ratings
-        | f"{data_desc} - Set User Id Key" >> beam.Map(lambda x: (x["userId"], (x["movieId"], x["timestamp"])))
-        | f"{data_desc} - Group By User Id" >> beam.GroupByKey()
-        | f"{data_desc} - Add Views Counts" >> beam.Map(lambda x: (x, len(x[1])))
-        | f"{data_desc} - Filter If Not Enough Views" >> beam.Filter(lambda x: x[1] > min_timeline_len)
-        | f"{data_desc} - Sort Views By Timestamp" >> beam.Map(_sort_views_by_timestamp)
-    )
-
-
 def _augment_training_sequences_and_set_masks(
     sample: Dict[str, Any],
     duplication_factor: int,
@@ -210,23 +196,21 @@ def preprocess_with_dataflow(
     :param implicit_rating_threshold: The threshold used to decide whether a rating is an implicit positive sample or
     negative
     """
-    # opts = beam.pipeline.PipelineOptions(
-    #     experiments=["use_runner_v2"],
-    #     project="concise-haven-277809",
-    #     service_account="biarnes@concise-haven-277809.iam.gserviceaccount.com",
-    #     staging_location="gs://ml-25m/beam/stg",
-    #     temp_location="gs://ml-25m/beam/tmp",
-    #     job_name="ml-25m-preprocess",
-    #     num_workers=4,
-    #     region="europe-west9",
-    #     sdk_container_image="europe-west9-docker.pkg.dev/concise-haven-277809/biarnes/hsm-adasm",
-    # )
-    runner = "DirectRunner"
-    opts = beam.options.pipeline_options.DirectOptions(
-        direct_running_mode="multi_processing",
-        direct_num_workers=8
+    import os
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/adrienbiarnes/Projects/bert4rec/credentials.json"
+
+    options = beam.pipeline.PipelineOptions(
+        runner="DataflowRunner",
+        experiments=["use_runner_v2"],
+        project="concise-haven-277809",
+        staging_location="gs://movie-lens-25m/beam/stg",
+        temp_location="gs://movie-lens-25m/beam/tmp",
+        job_name="ml-25m-preprocess",
+        num_workers=4,
+        region="us-central1",
+        sdk_container_image="northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess",
     )
-    with beam.Pipeline(runner, options=opts) as pipeline:
+    with beam.Pipeline(options=options) as pipeline:
         raw_ratings = (
             pipeline
             | "Read ratings CSV" >> beam.io.textio.ReadFromText(f"{data_dir}/ratings.csv", skip_header_lines=1)
@@ -262,13 +246,13 @@ def preprocess_with_dataflow(
         # Add masks and augment training data
         train_examples = (
             train_examples
-            | "Augment and set masks" >> beam.Map(
+            | "Augment training data and set masks" >> beam.Map(
                 _augment_training_sequences_and_set_masks,
                 duplication_factor=duplication_factor,
                 nb_max_masked_ids_per_seq=nb_max_masked_ids_per_seq,
                 mask_ratio=mask_ratio,
             )
-            | "Flatten augmented examples" >> beam.FlatMap(lambda x: x)
+            | "Flatten augmented training examples" >> beam.FlatMap(lambda x: x)
         )
         val_examples = val_examples | "Set mask last position - val" >> beam.Map(_set_mask_last_position)
         test_examples = test_examples | "Set mask last position - test" >> beam.Map(_set_mask_last_position)
@@ -289,9 +273,8 @@ def preprocess_with_dataflow(
 
 
 if __name__ == "__main__":
-    # preprocess_with_dataflow(data_dir="gs://ml-25m")
     preprocess_with_dataflow(
-        data_dir="data",
+        data_dir="gs://movie-lens-25m",
         max_context_len=200,
         sliding_window_step_size=1,
         duplication_factor=2,
