@@ -1,0 +1,11 @@
+{
+  "hidden_size": 64,
+  "num_layers": 2,
+  "num_attention_heads": 2,
+  "max_sequence_length": 200,
+  "inner_dim": 256,
+  "inner_activation": "gelu",
+  "output_dropout": 0.2,
+  "attention_dropout": 0.2,
+  "initializer_range": 0.02
+}

@@ -3,7 +3,7 @@ This is an implementation of Bert4Rec.
 Preprocessing is implemented with Apache beam and
 model in Tensorflow 2.
 This implementation has been derived from the original work of the authors.
-* paper: 
+* paper: https://arxiv.org/pdf/1904.06690
 * code: https://github.com/FeiSun/BERT4Rec
 
 ## Installation

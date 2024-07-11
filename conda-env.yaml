@@ -7,7 +7,7 @@ dependencies:
   - pip
   - tensorflow-deps
   - pip:
-    - tensorflow-macos==2.16.2
+    - tensorflow-macos==2.14.0
     - tensorflow-metal==1.1.0
     - matplotlib==3.7.1
     - pandas==2.0.0

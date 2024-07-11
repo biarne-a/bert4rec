@@ -19,56 +19,6 @@ def _sort_views_by_timestamp(group) -> List[int]:
     return [v[0] for v in views]
 
 
-def _augment_training_sequences_and_set_masks(
-    sample: Dict[str, Any],
-    duplication_factor: int,
-    nb_max_masked_ids_per_seq: int,
-    mask_ratio: float,
-):
-    """
-
-    """
-    import random
-
-    all_augmented_samples = []
-    input_ids = sample["input_ids"]
-    for _ in range(duplication_factor):
-        nb_ids_to_mask = min(nb_max_masked_ids_per_seq, max(1, int(len(input_ids) * mask_ratio)))
-
-        masked_lm_ids = []
-        masked_lm_positions = []
-        masked_lm_weights = []
-
-        # Shuffle the positions
-        shuffled_id_positions = list(range(len(input_ids)))
-        random.shuffle(shuffled_id_positions)
-
-        # And take the required number of masked ids
-        for idx in range(nb_ids_to_mask):
-            masked_position = shuffled_id_positions[idx]
-            masked_lm_id = input_ids[idx]
-            masked_lm_positions.append(masked_position)
-            masked_lm_ids.append(masked_lm_id)
-            masked_lm_weights.append(1.0)
-
-        # Pad the masks to obtain a complete sequence up to the maximum allowed
-        while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
-            masked_lm_positions.append(0)
-            masked_lm_ids.append(0)
-            masked_lm_weights.append(0.0)
-
-        augmented_sample = {
-            "input_ids": input_ids,
-            "input_mask": sample["input_mask"],
-            "sample_type": sample["sample_type"],
-            "masked_lm_positions": masked_lm_positions,
-            "masked_lm_ids": masked_lm_ids,
-            "masked_lm_weights": masked_lm_weights,
-        }
-        all_augmented_samples.append(augmented_sample)
-    return all_augmented_samples
-
-
 def _generate_examples_from_complete_sequences(
     complete_sequence: List[int],
     max_context_len: int,
@@ -97,7 +47,7 @@ def _generate_examples_from_complete_sequences(
             sample_type = 2
 
         start_idx = max(0, end_idx - max_context_len)
-        input_ids = complete_sequence[start_idx:(end_idx + 1)]
+        input_ids = complete_sequence[start_idx:end_idx]
         input_mask = [1] * len(input_ids)
         # Pad sequence with 0s.
         while len(input_ids) < max_context_len:
@@ -111,6 +61,57 @@ def _generate_examples_from_complete_sequences(
         })
 
     return examples
+
+
+def _augment_training_sequences_and_set_masks(
+    sample: Dict[str, Any],
+    duplication_factor: int,
+    nb_max_masked_ids_per_seq: int,
+    mask_ratio: float,
+):
+    """
+
+    """
+    import random
+
+    all_augmented_samples = []
+    input_ids = list(sample["input_ids"])
+    nb_filled_input_ids = sum([int(_id != 0) for _id in input_ids])
+    for _ in range(duplication_factor):
+        nb_ids_to_mask = min(nb_max_masked_ids_per_seq, max(1, int(nb_filled_input_ids * mask_ratio)))
+
+        masked_lm_ids = []
+        masked_lm_positions = []
+        masked_lm_weights = []
+
+        # Shuffle the positions
+        shuffled_id_positions = list(range(nb_filled_input_ids))
+        random.shuffle(shuffled_id_positions)
+
+        # And take the required number of masked ids
+        for idx in range(nb_ids_to_mask):
+            masked_position = shuffled_id_positions[idx]
+            masked_lm_id = input_ids[idx]
+            masked_lm_positions.append(masked_position)
+            masked_lm_ids.append(masked_lm_id)
+            masked_lm_weights.append(1.0)
+
+        # Pad the masks to obtain a complete sequence up to the maximum allowed
+        while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
+            masked_lm_positions.append(0)
+            masked_lm_ids.append(0)
+            masked_lm_weights.append(0.0)
+
+        augmented_sample = {
+            "input_ids": input_ids,
+            "input_mask": sample["input_mask"],
+            "sample_type": sample["sample_type"],
+            "masked_lm_positions": masked_lm_positions,
+            "masked_lm_ids": masked_lm_ids,
+            "masked_lm_weights": masked_lm_weights,
+        }
+        all_augmented_samples.append(augmented_sample)
+    return all_augmented_samples
 
 
 def _set_mask_last_position(sample: Dict[str, Any]):
@@ -206,7 +207,7 @@ def preprocess_with_dataflow(
         staging_location="gs://movie-lens-25m/beam/stg",
         temp_location="gs://movie-lens-25m/beam/tmp",
         job_name="ml-25m-preprocess",
-        num_workers=4,
+        num_workers=8,
         region="us-central1",
         sdk_container_image="northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess",
     )
