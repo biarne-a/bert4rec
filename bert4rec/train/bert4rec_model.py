@@ -5,6 +5,7 @@ from typing import Optional
 
 from bert4rec.train.layers import MaskedLM, Bert4RecEncoder
 
+
 step_signature = [{
     "input_ids": tf.TensorSpec(shape=(None, None), dtype=tf.int64),
     "input_mask": tf.TensorSpec(shape=(None, None), dtype=tf.int64),
@@ -76,7 +77,6 @@ class BERT4RecModel(tf.keras.Model):
             inputs["masked_lm_positions"] = masked_lm_positions
         else:
             inputs.append(masked_lm_positions)
-
         self.inputs = inputs
 
     @property
@@ -124,27 +124,18 @@ class BERT4RecModel(tf.keras.Model):
     # @tf.function(input_signature=step_signature)
     def train_step(self, inputs):
         y_true = inputs["masked_lm_ids"]
+        sample_weight = inputs["masked_lm_weights"]
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
             y_pred = outputs["mlm_logits"]
-            loss = self.compiled_loss(y_true, y_pred, regularization_losses=self.losses)
+            loss = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
 
         self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
-        self.compiled_metrics.update_state(y_true, y_pred)
+        self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
         return {m.name: m.result() for m in self.metrics}
 
-    def _average_precision_at_k(self, y_true, y_pred):
-        k_multiplier = tf.constant([1 / curr_k for curr_k in range(1, 11)], dtype=tf.float32)
-        y_true = tf.cast(y_true, dtype=tf.int32)
-        y_true = tf.expand_dims(y_true, axis=-1)
-        top_indices = tf.math.top_k(y_pred, k=10).indices
-        match = y_true == top_indices
-
-        unweighted_precisions = tf.cast(match, dtype=tf.float32)
-        return tf.reduce_max(unweighted_precisions * k_multiplier, axis=-1)
-
-    @tf.function(input_signature=step_signature)
+    # @tf.function(input_signature=step_signature)
     def test_step(self, inputs):
         """
         Custom train_step function to alter standard training behaviour
@@ -152,11 +143,12 @@ class BERT4RecModel(tf.keras.Model):
         :return:
         """
         y_true = inputs["masked_lm_ids"]
+        sample_weight = inputs["masked_lm_weights"]
         outputs = self(inputs, training=False)
         y_pred = outputs["mlm_logits"]
 
-        loss = self.compiled_loss(y_true, y_pred, regularization_losses=self.losses)
-        self.compiled_metrics.update_state(y_true, y_pred)
+        loss = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
+        self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -164,7 +156,7 @@ class BERT4RecModel(tf.keras.Model):
         config = super().get_config()
         config.update(self._config)
         return config
-
-    @classmethod
-    def from_config(cls, config, custom_object=None):
-        return cls(**config)
+    #
+    # @classmethod
+    # def from_config(cls, config, custom_object=None):
+    #     return cls(**config)

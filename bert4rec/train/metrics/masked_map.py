@@ -26,14 +26,11 @@ class MaskedMeanAveragePrecision(tf.keras.metrics.Metric):
         y_true = tf.cast(y_true, dtype=tf.int32)
         avg_prec_k = self._average_precision_at_k(y_true, y_pred)
 
-        mask = y_true != self._pad_token
-        mask_weights = tf.cast(mask, dtype=tf.float32)
+        if sample_weight is None:
+            sample_weight = tf.ones_like(avg_prec_k, dtype=tf.float32)
+        avg_prec_k = avg_prec_k * sample_weight
 
-        if sample_weight is not None:
-            mask_weights = sample_weight * mask_weights
-
-        avg_prec_k = avg_prec_k * mask_weights
-        self._sum_weights.assign_add(tf.reduce_sum(mask_weights))
+        self._sum_weights.assign_add(tf.reduce_sum(sample_weight))
         self._cumulative_avg_precision.assign_add(tf.reduce_sum(avg_prec_k))
 
     def result(self):

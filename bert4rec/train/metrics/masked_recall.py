@@ -28,15 +28,13 @@ class MaskedRecall(tf.keras.metrics.Metric):
         top_indices = tf.math.top_k(y_pred, k=self._k).indices
         match = y_true == top_indices
         recall_k = tf.cast(match, dtype=tf.float32)
+        recall_k = tf.reduce_sum(recall_k, axis=-1)
 
-        mask = y_true != self._pad_token
-        mask_weights = tf.cast(mask, dtype=tf.float32)
+        if sample_weight is None:
+            sample_weight = tf.ones_like(recall_k, dtype=tf.float32)
+        recall_k = recall_k * sample_weight
 
-        if sample_weight is not None:
-            mask_weights = sample_weight * mask_weights
-        recall_k = recall_k * mask_weights
-
-        self._sum_weights.assign_add(tf.reduce_sum(mask_weights))
+        self._sum_weights.assign_add(tf.reduce_sum(sample_weight))
         self._cumulative_recall.assign_add(tf.reduce_sum(recall_k))
 
     def result(self):

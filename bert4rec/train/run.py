@@ -6,7 +6,6 @@ import numpy as np
 import tensorflow as tf
 
 from bert4rec.train.config import Config
-from bert4rec.train.losses import MaskedSparseCategoricalCrossEntropy
 from bert4rec.train.metrics import MaskedRecall, MaskedMeanAveragePrecision
 from bert4rec.train.datasets import Data, get_data
 from bert4rec.train.bert4rec_model import BERT4RecModel
@@ -42,8 +41,8 @@ def run_training(config: Config):
     model = build_model(data, config)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
-        loss=MaskedSparseCategoricalCrossEntropy(),
-        metrics=[
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        weighted_metrics=[
             MaskedRecall(k=10),
             MaskedMeanAveragePrecision(k=10)
         ],
@@ -53,7 +52,7 @@ def run_training(config: Config):
     history = model.fit(
         x=data.train_ds,
         epochs=1_000,
-        steps_per_epoch=5_000,
+        steps_per_epoch=3,#5_000,
         validation_data=data.val_ds,
         validation_steps=data.nb_val // config.batch_size,
         callbacks=[
@@ -73,6 +72,6 @@ def run_evaluation(config: Config):
     model = tf.keras.models.load_model(save_filepath, custom_objects={
         "MaskedRecall": MaskedRecall,
         "MaskedMeanAveragePrecision": MaskedMeanAveragePrecision,
-        "MaskedSparseCategoricalCrossEntropy": MaskedSparseCategoricalCrossEntropy,
+        # "MaskedSparseCategoricalCrossEntropy": MaskedSparseCategoricalCrossEntropy,
     })
     save_predictions(config, data, model)

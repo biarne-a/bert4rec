@@ -8,9 +8,10 @@ from apache_beam.pvalue import PCollection
 
 
 class SampleType: #(Enum):
-    TRAIN = 0
-    VALIDATION = 1
-    TEST = 2
+    TRAIN_SLIDING = 0
+    TRAIN_LAST = 1
+    VALIDATION = 2
+    TEST = 3
 
 
 def _sort_views_by_timestamp(group) -> List[int]:
@@ -22,7 +23,7 @@ def _sort_views_by_timestamp(group) -> List[int]:
 def _generate_examples_from_complete_sequences(
     complete_sequence: List[int],
     max_context_len: int,
-    sliding_window_step_size: int,
+    proporition_sliding_window: float,
 ):
     """
     Generate user sequences from a single complete user sequence using a sliding window.
@@ -39,28 +40,50 @@ def _generate_examples_from_complete_sequences(
     :return: examples: Generated examples from this single timeline.
     """
     examples = []
-    for end_idx in range(2, len(complete_sequence), sliding_window_step_size):
-        sample_type = 0
-        if end_idx == len(complete_sequence) - 1:
-            sample_type = 1
-        elif end_idx == len(complete_sequence) - 2:
-            sample_type = 2
+    sliding_window_step_size = max_context_len
+    if proporition_sliding_window != -1.0:
+        sliding_window_step_size = int(proporition_sliding_window * max_context_len)
 
-        start_idx = max(0, end_idx - max_context_len)
-        input_ids = complete_sequence[start_idx:end_idx]
-        input_mask = [1] * len(input_ids)
-        # Pad sequence with 0s.
-        while len(input_ids) < max_context_len:
-            input_ids.append(0)
-            input_mask.append(0)
+    # The last 2 tokens of each sequence is for validation and testing
+    train_sequence_len = len(complete_sequence) - 2
+    train_complete_sequence = complete_sequence[:-2]
 
-        examples.append({
-            "input_ids": input_ids,
-            "input_mask": input_mask,
-            "sample_type": sample_type
-        })
+    start_indexes = list(range(train_sequence_len - max_context_len, 0, -sliding_window_step_size))
+    start_indexes.append(0)
+    for start_idx in start_indexes[::-1]:
+        example = _get_new_example(train_complete_sequence, start_idx, max_context_len, sample_type=0)
+        examples.append(example)
+
+    # Add a train sequence for last index masking
+    example = _get_new_example(train_complete_sequence, start_idx, max_context_len, sample_type=1)
+    examples.append(example)
+
+    # Add validation sequence
+    start_idx_validation = len(complete_sequence) - max_context_len - 1
+    example = _get_new_example(complete_sequence, start_idx_validation, max_context_len, sample_type=2)
+    examples.append(example)
+
+    # Add test sequence
+    start_idx_test = len(complete_sequence) - max_context_len
+    example = _get_new_example(complete_sequence, start_idx_test, max_context_len, sample_type=3)
+    examples.append(example)
 
     return examples
+
+
+def _get_new_example(complete_sequence, start_idx, max_context_len, sample_type):
+    end_idx = start_idx + max_context_len
+    input_ids = complete_sequence[start_idx:end_idx]
+    input_mask = [1] * len(input_ids)
+    # Pad sequence with 0s.
+    while len(input_ids) < max_context_len:
+        input_ids.append(0)
+        input_mask.append(0)
+    return {
+        "input_ids": input_ids,
+        "input_mask": input_mask,
+        "sample_type": sample_type,
+    }
 
 
 def _augment_training_sequences_and_set_masks(
@@ -75,53 +98,60 @@ def _augment_training_sequences_and_set_masks(
     import random
 
     all_augmented_samples = []
-    input_ids = list(sample["input_ids"])
-    nb_filled_input_ids = sum([int(_id != 0) for _id in input_ids])
-    for _ in range(duplication_factor):
-        nb_ids_to_mask = min(nb_max_masked_ids_per_seq, max(1, int(nb_filled_input_ids * mask_ratio)))
+    if sample["sample_type"] == 0:
+        input_ids = list(sample["input_ids"])
+        nb_filled_input_ids = sum(sample["input_mask"])
+        for _ in range(duplication_factor):
+            nb_ids_to_mask = min(nb_max_masked_ids_per_seq, max(1, int(nb_filled_input_ids * mask_ratio)))
 
-        masked_lm_ids = []
-        masked_lm_positions = []
-        masked_lm_weights = []
+            masked_lm_ids = []
+            masked_lm_positions = []
+            masked_lm_weights = []
 
-        # Shuffle the positions
-        shuffled_id_positions = list(range(nb_filled_input_ids))
-        random.shuffle(shuffled_id_positions)
+            # Shuffle the positions
+            shuffled_id_positions = list(range(nb_filled_input_ids))
+            random.shuffle(shuffled_id_positions)
 
-        # And take the required number of masked ids
-        for idx in range(nb_ids_to_mask):
-            masked_position = shuffled_id_positions[idx]
-            masked_lm_id = input_ids[idx]
-            masked_lm_positions.append(masked_position)
-            masked_lm_ids.append(masked_lm_id)
-            masked_lm_weights.append(1.0)
+            # And take the required number of masked ids
+            for idx in range(nb_ids_to_mask):
+                masked_position = shuffled_id_positions[idx]
+                masked_lm_id = input_ids[idx]
+                masked_lm_positions.append(masked_position)
+                masked_lm_ids.append(masked_lm_id)
+                masked_lm_weights.append(1.0)
 
-        # Pad the masks to obtain a complete sequence up to the maximum allowed
-        while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
-            masked_lm_positions.append(0)
-            masked_lm_ids.append(0)
-            masked_lm_weights.append(0.0)
+            # Pad the masks to obtain a complete sequence up to the maximum allowed
+            while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
+                masked_lm_positions.append(0)
+                masked_lm_ids.append(0)
+                masked_lm_weights.append(0.0)
 
-        augmented_sample = {
-            "input_ids": input_ids,
-            "input_mask": sample["input_mask"],
-            "sample_type": sample["sample_type"],
-            "masked_lm_positions": masked_lm_positions,
-            "masked_lm_ids": masked_lm_ids,
-            "masked_lm_weights": masked_lm_weights,
-        }
-        all_augmented_samples.append(augmented_sample)
+            augmented_sample = {
+                "input_ids": input_ids,
+                "input_mask": sample["input_mask"],
+                "sample_type": sample["sample_type"],
+                "masked_lm_positions": masked_lm_positions,
+                "masked_lm_ids": masked_lm_ids,
+                "masked_lm_weights": masked_lm_weights,
+            }
+            all_augmented_samples.append(augmented_sample)
+    else:
+        # Mask last position to match the val and test sets settings
+        last_position_masked_sample = _set_mask_last_position(sample)
+        all_augmented_samples.append(last_position_masked_sample)
     return all_augmented_samples
 
 
 def _set_mask_last_position(sample: Dict[str, Any]):
     input_ids = sample["input_ids"]
+    nb_filled_input_ids = sum(sample["input_mask"])
+    masked_lm_position = nb_filled_input_ids - 1
     return {
         "input_ids": input_ids,
         "input_mask": sample["input_mask"],
         "sample_type": sample["sample_type"],
-        "masked_lm_positions":  [len(input_ids) - 1],
-        "masked_lm_ids": [input_ids[-1]],
+        "masked_lm_positions":  [masked_lm_position],
+        "masked_lm_ids": [input_ids[masked_lm_position]],
         "masked_lm_weights": [1.0]
     }
 
@@ -174,10 +204,14 @@ def _filter_examples_per_sample_type(examples_per_user: PCollection, sample_type
     return examples_per_user | f"Filter {sample_type}" >> beam.Filter(lambda x: x["sample_type"] == sample_type)
 
 
+def _filter_examples_per_sample_types(examples_per_user: PCollection, sample_type1: int, sample_type2: int) -> PCollection:
+    return examples_per_user | f"Filter {sample_type1} and {sample_type2}" >> beam.Filter(lambda x: (x["sample_type"] == sample_type1) or (x["sample_type"] == sample_type2))
+
+
 def preprocess_with_dataflow(
     data_dir: str,
     max_context_len: int,
-    sliding_window_step_size: int,
+    proporition_sliding_window: float,
     duplication_factor: int,
     nb_max_masked_ids_per_seq: int,
     mask_ratio: float,
@@ -224,7 +258,7 @@ def preprocess_with_dataflow(
             | "Select columns" >> beam.Map(lambda x: (x["userId"], (x["movieId"], x["timestamp"])))
             | "Group By User Id" >> beam.GroupByKey()
             | "Add Views Counts" >> beam.Map(lambda x: (x, len(x[1])))
-            | "Filter If Not Enough Views" >> beam.Filter(lambda x: x[1] >= 3)
+            | "Filter If Not Enough Views" >> beam.Filter(lambda x: x[1] >= 5)
             | "Sort Views By Timestamp" >> beam.Map(_sort_views_by_timestamp)
         )
 
@@ -234,13 +268,13 @@ def preprocess_with_dataflow(
             beam.Map(
                 _generate_examples_from_complete_sequences,
                 max_context_len=max_context_len,
-                sliding_window_step_size=sliding_window_step_size,
+                proporition_sliding_window=proporition_sliding_window,
             )
             | f"Flatten examples" >> beam.FlatMap(lambda x: x)
         )
 
         # Split examples
-        train_examples = _filter_examples_per_sample_type(examples, SampleType.TRAIN)
+        train_examples = _filter_examples_per_sample_types(examples, SampleType.TRAIN_SLIDING, SampleType.TRAIN_LAST)
         val_examples = _filter_examples_per_sample_type(examples, SampleType.VALIDATION)
         test_examples = _filter_examples_per_sample_type(examples, SampleType.TEST)
 
@@ -277,8 +311,8 @@ if __name__ == "__main__":
     preprocess_with_dataflow(
         data_dir="gs://movie-lens-25m",
         max_context_len=200,
-        sliding_window_step_size=1,
-        duplication_factor=2,
+        proporition_sliding_window=0.5,
+        duplication_factor=10,
         nb_max_masked_ids_per_seq=20,
         mask_ratio=0.2,
         implicit_rating_threshold=2.0,

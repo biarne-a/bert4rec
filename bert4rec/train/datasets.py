@@ -16,6 +16,7 @@ class Data:
         test_ds: tf.data.Dataset,
         nb_test: int,
         movie_id_counts: Dict[str, int],
+        movie_id_lookup: tf.keras.layers.StringLookup,
         reverse_movie_id_lookup: tf.keras.layers.StringLookup,
     ):
         self.train_ds = train_ds
@@ -25,15 +26,12 @@ class Data:
         self.test_ds = test_ds
         self.nb_test = nb_test
         self.movie_id_counts = movie_id_counts
+        self.movie_id_lookup = movie_id_lookup
         self.reverse_movie_id_lookup = reverse_movie_id_lookup
 
     @property
-    def movie_id_vocab(self):
-        return list(self.movie_id_counts.keys())
-
-    @property
     def vocab_size(self):
-        return len(self.movie_id_counts)
+        return self.movie_id_lookup.vocab_size()
 
 
 def _read_unique_train_movie_id_counts(bucket_dir):
@@ -137,5 +135,6 @@ def get_data(config: Config):
         test_ds,
         nb_test,
         unique_train_movie_id_counts,
+        movie_id_lookup,
         reverse_movie_id_lookup
     )
