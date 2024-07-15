@@ -63,7 +63,7 @@ def run_training(config: Config):
         verbose=1,
     )
     save_history(history, config)
-    save_predictions(config, data, model)
+    run_evaluation(config)
 
 
 def run_evaluation(config: Config):
@@ -72,6 +72,5 @@ def run_evaluation(config: Config):
     model = tf.keras.models.load_model(save_filepath, custom_objects={
         "MaskedRecall": MaskedRecall,
         "MaskedMeanAveragePrecision": MaskedMeanAveragePrecision,
-        # "MaskedSparseCategoricalCrossEntropy": MaskedSparseCategoricalCrossEntropy,
     })
     save_predictions(config, data, model)

@@ -1,4 +1,3 @@
-from absl import logging
 import copy
 import tensorflow as tf
 from typing import Optional
@@ -79,55 +78,22 @@ class BERT4RecModel(tf.keras.Model):
             inputs.append(masked_lm_positions)
         self.inputs = inputs
 
-    @property
-    def identifier(self):
-        return "bert4rec"
-
     def call(self, inputs, training=None, mask=None):
-        if isinstance(inputs, list):
-            logging.warning('List inputs to the Bert Model are discouraged.')
-            inputs = dict([
-                (ref.name, tensor) for ref, tensor in zip(self.inputs, inputs)
-            ])
-
-        outputs = dict()
         encoder_inputs = {
             "input_ids": inputs["input_ids"],
             "input_mask": inputs["input_mask"],
         }
-        encoder_network_outputs = self.encoder(encoder_inputs, training=training)
-        if isinstance(encoder_network_outputs, list):
-            outputs['pooled_output'] = encoder_network_outputs[1]
-            # When `encoder_network` was instantiated with return_all_encoder_outputs
-            # set to True, `encoder_network_outputs[0]` is a list containing
-            # all transformer layers' output.
-            if isinstance(encoder_network_outputs[0], list):
-                outputs['encoder_outputs'] = encoder_network_outputs[0]
-                outputs['sequence_output'] = encoder_network_outputs[0][-1]
-            else:
-                outputs['sequence_output'] = encoder_network_outputs[0]
-        elif isinstance(encoder_network_outputs, dict):
-            outputs = encoder_network_outputs
-        else:
-            raise ValueError('encoder_network\'s output should be either a list '
-                             'or a dict, but got %s' % encoder_network_outputs)
+        encoder_outputs = self.encoder(encoder_inputs, training=training)
+        sequence_output = encoder_outputs["sequence_output"]
+        masked_lm_positions = inputs["masked_lm_positions"]
+        return self.masked_lm(sequence_output, masked_lm_positions)
 
-        sequence_output = outputs["sequence_output"]
-        # Inference may not have masked_lm_positions and mlm_logits are not needed
-        if "masked_lm_positions" in inputs:
-            masked_lm_positions = inputs["masked_lm_positions"]
-            predicted_logits = self.masked_lm(sequence_output, masked_lm_positions)
-            outputs["mlm_logits"] = predicted_logits
-
-        return outputs
-
-    # @tf.function(input_signature=step_signature)
+    @tf.function(input_signature=step_signature)
     def train_step(self, inputs):
         y_true = inputs["masked_lm_ids"]
         sample_weight = inputs["masked_lm_weights"]
         with tf.GradientTape() as tape:
-            outputs = self(inputs, training=True)
-            y_pred = outputs["mlm_logits"]
+            y_pred = self(inputs, training=True)
             loss = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
 
         self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
@@ -135,7 +101,7 @@ class BERT4RecModel(tf.keras.Model):
 
         return {m.name: m.result() for m in self.metrics}
 
-    # @tf.function(input_signature=step_signature)
+    @tf.function(input_signature=step_signature)
     def test_step(self, inputs):
         """
         Custom train_step function to alter standard training behaviour
@@ -144,19 +110,9 @@ class BERT4RecModel(tf.keras.Model):
         """
         y_true = inputs["masked_lm_ids"]
         sample_weight = inputs["masked_lm_weights"]
-        outputs = self(inputs, training=False)
-        y_pred = outputs["mlm_logits"]
+        y_pred = self(inputs, training=False)
 
         loss = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
         self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
         return {m.name: m.result() for m in self.metrics}
-
-    def get_config(self):
-        config = super().get_config()
-        config.update(self._config)
-        return config
-
-    @classmethod
-    def from_config(cls, config, custom_object=None):
-        return cls(**config)

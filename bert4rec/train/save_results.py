@@ -28,8 +28,8 @@ def save_predictions(config: Config, data: Data, model: BERT4RecModel, k: int = 
         fileh.write(f"{header}\n")
         i_batch = 0
         for batch in tqdm(data.test_ds.as_numpy_iterator(), total=nb_test_batches):
-            predictions = model.predict_on_batch(batch)
-            top_indices = tf.math.top_k(predictions["mlm_logits"], k=k).indices
+            logits = model.predict_on_batch(batch)
+            top_indices = tf.math.top_k(logits, k=k).indices
             top_predictions = data.reverse_movie_id_lookup(top_indices).numpy().reshape((-1, k))
             y_true = batch["masked_lm_ids"]
             y_true = data.reverse_movie_id_lookup(y_true)

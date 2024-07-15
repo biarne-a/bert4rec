@@ -115,7 +115,7 @@ def _augment_training_sequences_and_set_masks(
             # And take the required number of masked ids
             for idx in range(nb_ids_to_mask):
                 masked_position = shuffled_id_positions[idx]
-                masked_lm_id = input_ids[idx]
+                masked_lm_id = input_ids[masked_position]
                 masked_lm_positions.append(masked_position)
                 masked_lm_ids.append(masked_lm_id)
                 masked_lm_weights.append(1.0)
