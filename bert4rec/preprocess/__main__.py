@@ -39,6 +39,21 @@ def _generate_examples_from_complete_sequences(
 
     :return: examples: Generated examples from this single timeline.
     """
+
+    def _get_new_example(complete_sequence, start_idx, max_context_len, sample_type):
+        end_idx = start_idx + max_context_len
+        input_ids = complete_sequence[start_idx:end_idx]
+        input_mask = [1] * len(input_ids)
+        # Pad sequence with 0s.
+        while len(input_ids) < max_context_len:
+            input_ids.append(0)
+            input_mask.append(0)
+        return {
+            "input_ids": input_ids,
+            "input_mask": input_mask,
+            "sample_type": sample_type,
+        }
+
     examples = []
     sliding_window_step_size = max_context_len
     if proporition_sliding_window != -1.0:
@@ -69,21 +84,6 @@ def _generate_examples_from_complete_sequences(
     examples.append(example)
 
     return examples
-
-
-def _get_new_example(complete_sequence, start_idx, max_context_len, sample_type):
-    end_idx = start_idx + max_context_len
-    input_ids = complete_sequence[start_idx:end_idx]
-    input_mask = [1] * len(input_ids)
-    # Pad sequence with 0s.
-    while len(input_ids) < max_context_len:
-        input_ids.append(0)
-        input_mask.append(0)
-    return {
-        "input_ids": input_ids,
-        "input_mask": input_mask,
-        "sample_type": sample_type,
-    }
 
 
 def _augment_training_sequences_and_set_masks(
@@ -136,8 +136,31 @@ def _augment_training_sequences_and_set_masks(
             }
             all_augmented_samples.append(augmented_sample)
     else:
+        def __set_mask_last_position(sample):
+            input_ids = sample["input_ids"]
+            nb_filled_input_ids = sum(sample["input_mask"])
+            masked_lm_position = nb_filled_input_ids - 1
+            masked_lm_positions = [masked_lm_position]
+            masked_lm_ids = [input_ids[masked_lm_position]]
+            masked_lm_weights = [1.0]
+
+            # Pad the masks to obtain a complete sequence up to the maximum allowed
+            while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
+                masked_lm_positions.append(0)
+                masked_lm_ids.append(0)
+                masked_lm_weights.append(0.0)
+
+            return {
+                "input_ids": input_ids,
+                "input_mask": sample["input_mask"],
+                "sample_type": sample["sample_type"],
+                "masked_lm_positions": masked_lm_positions,
+                "masked_lm_ids": masked_lm_ids,
+                "masked_lm_weights": masked_lm_weights
+            }
+
         # Mask last position to match the val and test sets settings
-        last_position_masked_sample = _set_mask_last_position(sample)
+        last_position_masked_sample = __set_mask_last_position(sample)
         all_augmented_samples.append(last_position_masked_sample)
     return all_augmented_samples
 

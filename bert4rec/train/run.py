@@ -52,12 +52,12 @@ def run_training(config: Config):
     history = model.fit(
         x=data.train_ds,
         epochs=1_000,
-        steps_per_epoch=3,#5_000,
+        steps_per_epoch=5_000,
         validation_data=data.val_ds,
         validation_steps=data.nb_val // config.batch_size,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir="logs", update_freq=100),
-            tf.keras.callbacks.EarlyStopping(patience=1),
+            tf.keras.callbacks.EarlyStopping(patience=5),
             tf.keras.callbacks.ModelCheckpoint(save_filepath, save_best_only=True),
         ],
         verbose=1,

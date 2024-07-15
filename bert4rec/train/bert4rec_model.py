@@ -156,7 +156,7 @@ class BERT4RecModel(tf.keras.Model):
         config = super().get_config()
         config.update(self._config)
         return config
-    #
-    # @classmethod
-    # def from_config(cls, config, custom_object=None):
-    #     return cls(**config)
+
+    @classmethod
+    def from_config(cls, config, custom_object=None):
+        return cls(**config)
