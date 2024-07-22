@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 import tensorflow as tf
 
-from bert4rec.config import Config
+from train.config import Config
 
 
 class Data:
@@ -59,7 +59,7 @@ def _get_dataset_from_files(config: Config, dataset_type: str):
 
 def _get_features_description(config: Config, nb_max_masked_ids_per_seq: Optional[int] = None) -> Dict[str, tf.io.FixedLenFeature]:
     max_seq_length = config.bert_config.max_sequence_length
-    nb_max_masked_ids_per_seq = nb_max_masked_ids_per_seq or config.nb_max_masked_ids_per_seq
+    nb_max_masked_ids_per_seq = nb_max_masked_ids_per_seq or config.bert_config.nb_max_masked_ids_per_seq
     return {
         "input_ids": tf.io.FixedLenFeature([max_seq_length], tf.int64),
         "input_mask": tf.io.FixedLenFeature([max_seq_length], tf.int64),

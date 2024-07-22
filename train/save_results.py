@@ -6,10 +6,9 @@ import keras
 import tensorflow as tf
 from tqdm import tqdm
 
-from bert4rec.config import Config
-from bert4rec.datasets import Data
+from train.config import Config
+from train.datasets import Data
 from bert4rec.bert4rec_model import BERT4RecModel
-
 
 
 def save_history(history: keras.callbacks.History, config: Config):

@@ -1,6 +1,4 @@
-import copy
 import tensorflow as tf
-from typing import Optional
 
 from bert4rec.layers import MaskedLM, Bert4RecEncoder
 
@@ -17,43 +15,20 @@ step_signature = [{
 class BERT4RecModel(tf.keras.Model):
     def __init__(self,
                  vocab_size: int,
-                 customized_masked_lm: Optional[tf.keras.layers.Layer] = None,
                  mlm_activation="gelu",
                  mlm_initializer="glorot_uniform",
                  name: str = "bert4rec",
                  **kwargs):
         super().__init__(name=name)
-        encoder = Bert4RecEncoder(vocab_size, **kwargs)
-        self._config = {
-            "encoder": encoder,
-            "customized_masked_lm": customized_masked_lm,
-            "mlm_activation": mlm_activation,
-            "mlm_initializer": mlm_initializer,
-            "name": name,
-        }
-
-        self.encoder = encoder
-        self.vocab_size = vocab_size
-
+        self._vocab_size = vocab_size
+        self.encoder = Bert4RecEncoder(vocab_size, **kwargs)
         _ = self.encoder(self.encoder.inputs)
-
-        inputs = copy.copy(encoder.inputs)
-
-        self.masked_lm = customized_masked_lm or MaskedLM(
+        self.masked_lm = MaskedLM(
             self.encoder.get_embedding_table(),
             activation=mlm_activation,
             initializer=mlm_initializer,
             name="masked_lm_predictions"
         )
-
-        masked_lm_positions = tf.keras.layers.Input(
-            shape=(None,), name="masked_lm_positions", dtype=tf.int32
-        )
-        if isinstance(inputs, dict):
-            inputs["masked_lm_positions"] = masked_lm_positions
-        else:
-            inputs.append(masked_lm_positions)
-        self.inputs = inputs
 
     def call(self, inputs, training=None, mask=None):
         encoder_inputs = {
@@ -80,16 +55,11 @@ class BERT4RecModel(tf.keras.Model):
 
     @tf.function(input_signature=step_signature)
     def test_step(self, inputs):
-        """
-        Custom train_step function to alter standard training behaviour
-
-        :return:
-        """
         y_true = inputs["masked_lm_ids"]
         sample_weight = inputs["masked_lm_weights"]
         y_pred = self(inputs, training=False)
 
-        loss = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
+        _ = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
         self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
         return {m.name: m.result() for m in self.metrics}

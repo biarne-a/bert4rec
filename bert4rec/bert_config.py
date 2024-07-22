@@ -1,8 +1,8 @@
-import json
 import copy
+from train.config import ModelConfig
 
 
-class BertConfig:
+class BertConfig(ModelConfig):
     """Configuration to train a `BertModel`."""
 
     def __init__(
@@ -16,6 +16,7 @@ class BertConfig:
         output_dropout=0.1,
         attention_dropout=0.1,
         initializer_range=0.02,
+        nb_max_masked_ids_per_seq=20,
     ):
         """
         Builds a BertConfig.
@@ -40,6 +41,7 @@ class BertConfig:
         self.output_dropout = output_dropout
         self.attention_dropout = attention_dropout
         self.initializer_range = initializer_range
+        self.nb_max_masked_ids_per_seq = nb_max_masked_ids_per_seq
 
     @classmethod
     def from_dict(cls, json_object):
@@ -50,19 +52,3 @@ class BertConfig:
         """Serializes this instance to a Python dictionary."""
         output = copy.deepcopy(self.__dict__)
         return output
-
-
-class Config:
-    SEED = 42
-
-    def __init__(
-        self,
-        data_dir: str,
-        bert_config_file: str,
-    ):
-        self.data_dir = data_dir
-        bert_config = json.load(open(bert_config_file, "r"))
-        self.batch_size = bert_config.pop("batch_size")
-        self.nb_max_masked_ids_per_seq = bert_config.pop("nb_max_masked_ids_per_seq")
-        self.learning_rate = bert_config.pop("learning_rate")
-        self.bert_config = BertConfig.from_dict(bert_config)
