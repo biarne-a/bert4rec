@@ -5,15 +5,16 @@ import random
 import numpy as np
 import tensorflow as tf
 
-from bert4rec.train.config import Config
-from bert4rec.train.metrics import MaskedRecall, MaskedMeanAveragePrecision
-from bert4rec.train.datasets import Data, get_data
-from bert4rec.train.bert4rec_model import BERT4RecModel
-from bert4rec.train.save_results import save_history, save_predictions
+from bert4rec.config import Config
+from bert4rec.metrics import MaskedRecall, MaskedMeanAveragePrecision
+from bert4rec.datasets import Data, get_data
+from bert4rec.bert4rec_model import BERT4RecModel
+from bert4rec.save_results import save_history, save_predictions
 
 
 def build_model(data: Data, config: Config):
-    return BERT4RecModel(data.vocab_size, **config.bert_config.to_dict())
+    bert_config = config.bert_config.to_dict()
+    return BERT4RecModel(data.vocab_size, **bert_config)
 
 
 def _debugger_is_active() -> bool:

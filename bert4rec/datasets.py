@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 import tensorflow as tf
 
-from bert4rec.train.config import Config
+from bert4rec.config import Config
 
 
 class Data:
@@ -94,13 +94,14 @@ def get_data(config: Config):
     def _setup_batch(x):
         nb_tokens_to_mask = tf.cast(tf.reduce_sum(x["masked_lm_weights"]), tf.int32)
         masked_lm_positions = tf.slice(x["masked_lm_positions"], [0], [nb_tokens_to_mask])
+        masked_lm_ids = tf.gather(x["input_ids"], x["masked_lm_positions"])
         input_ids = tf.tensor_scatter_nd_update(
             tensor=tf.strings.as_string(x["input_ids"]),
             indices=tf.reshape(masked_lm_positions, (-1, 1)),
             updates=tf.repeat(["[MASK]"], nb_tokens_to_mask)
         )
         x["input_ids"] = movie_id_lookup(input_ids)
-        x["masked_lm_ids"] = movie_id_lookup(tf.strings.as_string(x["masked_lm_ids"]))
+        x["masked_lm_ids"] = movie_id_lookup(tf.strings.as_string(masked_lm_ids))
         return x
 
     train_ds = train_ds.map(train_parse_function).map(_setup_batch).repeat().batch(config.batch_size)

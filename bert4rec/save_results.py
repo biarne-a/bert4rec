@@ -6,9 +6,9 @@ import keras
 import tensorflow as tf
 from tqdm import tqdm
 
-from bert4rec.train.config import Config
-from bert4rec.train.datasets import Data
-from bert4rec.train.bert4rec_model import BERT4RecModel
+from bert4rec.config import Config
+from bert4rec.datasets import Data
+from bert4rec.bert4rec_model import BERT4RecModel
 
 
 

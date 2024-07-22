@@ -3,8 +3,9 @@ from typing import Any, Optional, Sequence, Union
 from absl import logging
 import tensorflow as tf
 
-from bert4rec.train import utils
-from bert4rec.train.layers import block_sparse_attention, multi_query_attention
+from bert4rec import utils
+from bert4rec.layers import multi_query_attention
+from bert4rec.layers import block_sparse_attention
 
 
 class RMSNorm(tf.keras.layers.Layer):

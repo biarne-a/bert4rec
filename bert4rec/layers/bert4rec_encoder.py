@@ -5,13 +5,13 @@ from typing import Any, Callable, Optional, Union
 from absl import logging
 import tensorflow as tf
 
-from bert4rec.train.layers import (
+from bert4rec.layers import (
     OnDeviceEmbedding,
     PositionEmbedding,
     SelfAttentionMask,
     TransformerEncoderBlock,
 )
-from bert4rec.train import utils
+from bert4rec import utils
 
 _Initializer = Union[str, tf.keras.initializers.Initializer]
 _Activation = Union[str, Callable[..., Any]]

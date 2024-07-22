@@ -2,7 +2,7 @@ import copy
 import tensorflow as tf
 from typing import Optional
 
-from bert4rec.train.layers import MaskedLM, Bert4RecEncoder
+from bert4rec.layers import MaskedLM, Bert4RecEncoder
 
 
 step_signature = [{
@@ -15,36 +15,13 @@ step_signature = [{
 
 
 class BERT4RecModel(tf.keras.Model):
-    """
-    NOTE: The model can only be saved, when completely initialized (when using the saving api).
-    For a not further known reason (but empirically tested), saving a subclassed Keras model with a
-    custom `train_step()` function throws an error when not fully initialized. In detail, this line
-    `loss = self.compiled_loss(y_true, y_pred, regularization_losses=self.losses)` causes the error. Fully
-    initialized means in this context that the given metrics and loss(es) in the `model.compile()` call are not
-    built but only set/initialized. See e.g. `init__()` method of the LossesContainer object
-    (wrapper for compiled_metrics property):
-    https://github.com/keras-team/keras/blob/3cec735c5602a1bd9880b1b5735c5ce64a94eb76/keras/engine/compile_utils.py#L117
-    """
-
     def __init__(self,
                  vocab_size: int,
                  customized_masked_lm: Optional[tf.keras.layers.Layer] = None,
                  mlm_activation="gelu",
                  mlm_initializer="glorot_uniform",
                  name: str = "bert4rec",
-                 # special_token_ids: list[int] = SPECIAL_TOKEN_IDS,
                  **kwargs):
-        """
-
-        :param encoder:
-        :param customized_masked_lm:
-        :param mlm_activation:
-        :param mlm_initializer:
-        :param name: Name of this keras model
-        :param special_token_ids: An optional list of special token ids that should be prevented from
-            being predicted
-        :param kwargs:
-        """
         super().__init__(name=name)
         encoder = Bert4RecEncoder(vocab_size, **kwargs)
         self._config = {
