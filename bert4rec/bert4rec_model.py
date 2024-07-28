@@ -40,7 +40,7 @@ class BERT4RecModel(tf.keras.Model):
         masked_lm_positions = inputs["masked_lm_positions"]
         return self.masked_lm(sequence_output, masked_lm_positions)
 
-    @tf.function(input_signature=step_signature)
+    # @tf.function(input_signature=step_signature)
     def train_step(self, inputs):
         y_true = inputs["masked_lm_ids"]
         sample_weight = inputs["masked_lm_weights"]

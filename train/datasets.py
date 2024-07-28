@@ -1,9 +1,9 @@
 import re
-from typing import Dict, Optional
+from typing import Dict
 
 import tensorflow as tf
 
-from train.config import Config
+from config.config import Config
 
 
 class Data:
@@ -57,27 +57,12 @@ def _get_dataset_from_files(config: Config, dataset_type: str):
     return dataset
 
 
-def _get_features_description(config: Config, nb_max_masked_ids_per_seq: Optional[int] = None) -> Dict[str, tf.io.FixedLenFeature]:
-    max_seq_length = config.bert_config.max_sequence_length
-    nb_max_masked_ids_per_seq = nb_max_masked_ids_per_seq or config.bert_config.nb_max_masked_ids_per_seq
-    return {
-        "input_ids": tf.io.FixedLenFeature([max_seq_length], tf.int64),
-        "input_mask": tf.io.FixedLenFeature([max_seq_length], tf.int64),
-        "masked_lm_positions": tf.io.FixedLenFeature([nb_max_masked_ids_per_seq], tf.int64),
-        "masked_lm_ids": tf.io.FixedLenFeature([nb_max_masked_ids_per_seq], tf.int64),
-        "masked_lm_weights": tf.io.FixedLenFeature([nb_max_masked_ids_per_seq], tf.float32),
-    }
-
-
 def get_data(config: Config):
     unique_train_movie_id_counts = _read_unique_train_movie_id_counts(config.data_dir)
 
     train_ds = _get_dataset_from_files(config, "train")
     val_ds = _get_dataset_from_files(config, "val")
     test_ds = _get_dataset_from_files(config, "test")
-
-    train_features_description = _get_features_description(config)
-    val_and_test_features_description = _get_features_description(config, nb_max_masked_ids_per_seq=1)
 
     movie_id_vocab = list(unique_train_movie_id_counts.keys()) + ["[MASK]"]
     movie_id_lookup = tf.keras.layers.StringLookup(vocabulary=movie_id_vocab)
@@ -88,25 +73,21 @@ def get_data(config: Config):
             return tf.io.parse_single_example(example_proto, features_description)
         return _parse_function
 
+    train_features_description = config.model_config.get_train_features_description()
+    val_and_test_features_description = config.model_config.get_val_and_test_features_description()
     train_parse_function = _get_parse_function(train_features_description)
     val_and_test_parse_function = _get_parse_function(val_and_test_features_description)
 
-    def _setup_batch(x):
-        nb_tokens_to_mask = tf.cast(tf.reduce_sum(x["masked_lm_weights"]), tf.int32)
-        masked_lm_positions = tf.slice(x["masked_lm_positions"], [0], [nb_tokens_to_mask])
-        masked_lm_ids = tf.gather(x["input_ids"], x["masked_lm_positions"])
-        input_ids = tf.tensor_scatter_nd_update(
-            tensor=tf.strings.as_string(x["input_ids"]),
-            indices=tf.reshape(masked_lm_positions, (-1, 1)),
-            updates=tf.repeat(["[MASK]"], nb_tokens_to_mask)
-        )
-        x["input_ids"] = movie_id_lookup(input_ids)
-        x["masked_lm_ids"] = movie_id_lookup(tf.strings.as_string(masked_lm_ids))
-        return x
-
-    train_ds = train_ds.map(train_parse_function).map(_setup_batch).repeat().batch(config.batch_size)
-    val_ds = val_ds.map(val_and_test_parse_function).filter(lambda x: tf.reduce_sum(x["input_mask"]) > 0).map(_setup_batch).repeat().batch(config.batch_size)
-    test_ds = test_ds.map(val_and_test_parse_function).filter(lambda x: tf.reduce_sum(x["input_mask"]) > 0).map(_setup_batch).repeat().batch(config.batch_size)
+    setup_batch_fn = config.model_config.get_setup_batch_fn(config.batch_size, movie_id_lookup)
+    train_ds = train_ds.map(train_parse_function).batch(config.batch_size).map(setup_batch_fn).repeat()
+    val_ds = (
+        val_ds.map(val_and_test_parse_function) #.filter(lambda x: tf.reduce_sum(x["input_mask"]) > 0)
+              .batch(config.batch_size).map(setup_batch_fn).repeat()
+    )
+    test_ds = (
+        test_ds.map(val_and_test_parse_function) #.filter(lambda x: tf.reduce_sum(x["input_mask"]) > 0)
+               .batch(config.batch_size).map(setup_batch_fn).repeat()
+    )
 
     nb_train = 2_665_787
     nb_test = 162_407

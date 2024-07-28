@@ -5,17 +5,10 @@ import random
 import numpy as np
 import tensorflow as tf
 
-from train.config import Config
+from config.config import Config
 from train.metrics import MaskedRecall, MaskedMeanAveragePrecision
-from train.datasets import Data, get_data
-from bert4rec.bert4rec_model import BERT4RecModel
+from train.datasets import get_data
 from train.save_results import save_history, save_predictions
-
-
-def build_model(data: Data, config: Config):
-    bert_config = config.bert_config.to_dict()
-    bert_config.pop("nb_max_masked_ids_per_seq")
-    return BERT4RecModel(data.vocab_size, **bert_config)
 
 
 def _debugger_is_active() -> bool:
@@ -40,9 +33,9 @@ def _get_model_save_filepath(config: Config) -> str:
 
 def run_training(config: Config):
     data = get_data(config)
-    model = build_model(data, config)
+    model = config.model_config.build_model(data)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
+        optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=config.learning_rate),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         weighted_metrics=[
             MaskedRecall(k=10),

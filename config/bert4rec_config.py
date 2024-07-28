@@ -1,10 +1,9 @@
 import copy
-from train.config import ModelConfig
+
+from config.config import ModelConfig
 
 
-class BertConfig(ModelConfig):
-    """Configuration to train a `BertModel`."""
-
+class Bert4RecConfig(ModelConfig):
     def __init__(
         self,
         hidden_size=768,
@@ -46,9 +45,35 @@ class BertConfig(ModelConfig):
     @classmethod
     def from_dict(cls, json_object):
         """Constructs a `BertConfig` from a Python dictionary of parameters."""
-        return BertConfig(**json_object)
+        return Bert4RecConfig(**json_object)
 
     def to_dict(self):
         """Serializes this instance to a Python dictionary."""
         output = copy.deepcopy(self.__dict__)
         return output
+
+    def get_train_features_description(self):
+        from bert4rec.dataset_helpers import get_features_description
+
+        return get_features_description(self)
+
+    def get_val_and_test_features_description(self):
+        from bert4rec.dataset_helpers import get_features_description
+
+        return get_features_description(self, nb_max_masked_ids_per_seq=1)
+
+    def get_setup_batch_fn(self, movie_id_lookup):
+        from bert4rec.dataset_helpers import get_setup_batch_fn
+
+        return get_setup_batch_fn(movie_id_lookup)
+
+    def build_model(self, data):
+        from bert4rec.bert4rec_model import BERT4RecModel
+
+        bert_config = self.to_dict()
+        bert_config.pop("nb_max_masked_ids_per_seq")
+        return BERT4RecModel(data.vocab_size, **bert_config)
+
+    @property
+    def label_column(self):
+        return "masked_lm_ids"
