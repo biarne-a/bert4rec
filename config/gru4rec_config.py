@@ -36,9 +36,9 @@ class Gru4RecConfig(ModelConfig):
         from gru4rec.dataset_helpers import get_features_description
         return get_features_description()
 
-    def get_setup_batch_fn(self, batch_size, movie_id_lookup):
+    def get_setup_batch_fn(self, movie_id_lookup):
         from gru4rec.dataset_helpers import get_setup_batch_fn
-        return get_setup_batch_fn(batch_size, movie_id_lookup)
+        return get_setup_batch_fn(movie_id_lookup)
 
     def build_model(self, data):
         from gru4rec.gru4rec_model import Gru4RecModel

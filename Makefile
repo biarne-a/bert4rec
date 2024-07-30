@@ -1,6 +1,6 @@
 # -*- mode: makefile -*-
 build_preprocess:
-	docker build -t northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess -f bert4rec/preprocess/Dockerfile .
+	docker build -t northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess -f preprocess/Dockerfile .
 	cat credentials.json | docker login -u _json_key --password-stdin https://northamerica-northeast1-docker.pkg.dev
 	docker push northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess
 

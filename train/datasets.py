@@ -31,7 +31,7 @@ class Data:
 
     @property
     def vocab_size(self):
-        return self.movie_id_lookup.vocab_size()
+        return self.movie_id_lookup.vocabulary_size()
 
 
 def _read_unique_train_movie_id_counts(bucket_dir):
@@ -46,7 +46,7 @@ def _read_unique_train_movie_id_counts(bucket_dir):
 
 
 def _get_dataset_from_files(config: Config, dataset_type: str):
-    filenames = f"{config.data_dir}/tfrecords/{dataset_type}/*.gz"
+    filenames = f"{config.data_dir}/tfrecords/{config.dataset_name}/{dataset_type}/*.gz"
     dataset = tf.data.Dataset.list_files(filenames, seed=Config.SEED)
     dataset = dataset.interleave(
         lambda x: tf.data.TFRecordDataset(x, compression_type="GZIP"),
@@ -64,7 +64,7 @@ def get_data(config: Config):
     val_ds = _get_dataset_from_files(config, "val")
     test_ds = _get_dataset_from_files(config, "test")
 
-    movie_id_vocab = list(unique_train_movie_id_counts.keys()) + ["[MASK]"]
+    movie_id_vocab = list(unique_train_movie_id_counts.keys()) #+ ["[MASK]"]
     movie_id_lookup = tf.keras.layers.StringLookup(vocabulary=movie_id_vocab)
     reverse_movie_id_lookup = tf.keras.layers.StringLookup(vocabulary=movie_id_vocab, invert=True)
 
@@ -78,18 +78,18 @@ def get_data(config: Config):
     train_parse_function = _get_parse_function(train_features_description)
     val_and_test_parse_function = _get_parse_function(val_and_test_features_description)
 
-    setup_batch_fn = config.model_config.get_setup_batch_fn(config.batch_size, movie_id_lookup)
+    setup_batch_fn = config.model_config.get_setup_batch_fn(movie_id_lookup)
     train_ds = train_ds.map(train_parse_function).batch(config.batch_size).map(setup_batch_fn).repeat()
     val_ds = (
-        val_ds.map(val_and_test_parse_function) #.filter(lambda x: tf.reduce_sum(x["input_mask"]) > 0)
+        val_ds.map(val_and_test_parse_function)
               .batch(config.batch_size).map(setup_batch_fn).repeat()
     )
     test_ds = (
-        test_ds.map(val_and_test_parse_function) #.filter(lambda x: tf.reduce_sum(x["input_mask"]) > 0)
+        test_ds.map(val_and_test_parse_function)
                .batch(config.batch_size).map(setup_batch_fn).repeat()
     )
 
-    nb_train = 2_665_787
+    nb_train = 21_464_749
     nb_test = 162_407
     nb_val = 162_407
 

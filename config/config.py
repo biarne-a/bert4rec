@@ -18,9 +18,11 @@ class Config:
     def __init__(
         self,
         data_dir: str,
+        dataset_name: str,
         config_file: str,
     ):
         self.data_dir = data_dir
+        self.dataset_name = dataset_name
         json_model_config = json.load(open(config_file, "r"))
         self.batch_size = json_model_config.pop("batch_size")
         self.learning_rate = json_model_config.pop("learning_rate")
@@ -35,3 +37,7 @@ class Config:
             return locals()[class_name]
         except KeyError:
             raise ValueError(f"Class '{class_name}' not found")
+
+    @property
+    def results_dir(self):
+        return f"{self.data_dir}/results/{self.dataset_name}"

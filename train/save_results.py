@@ -12,16 +12,14 @@ from bert4rec.bert4rec_model import BERT4RecModel
 
 
 def save_history(history: keras.callbacks.History, config: Config):
-    results_dir = f"{config.data_dir}/results"
-    os.makedirs(results_dir, exist_ok=True)
-    output_file = f"{results_dir}/history_bert4rec_training.p"
+    output_file = f"{config.results_dir}/history_training.p"
     pickle.dump(history.history, tf.io.gfile.GFile(output_file, "wb"))
 
 
 def save_predictions(config: Config, data: Data, model: BERT4RecModel, k: int = 10):
     nb_test_batches = data.nb_test // config.batch_size
     label_column = config.model_config.label_column
-    local_filename = f"{config.data_dir}/results/predictions_bert4rec.csv"
+    local_filename = f"{config.results_dir}/predictions.csv"
     with tf.io.gfile.GFile(local_filename, "w") as fileh:
         columns = ["label"] + [f"output_{i}" for i in range(k)]
         header = ",".join(columns)

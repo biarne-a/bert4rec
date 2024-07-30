@@ -1,6 +1,6 @@
 import random
 # from enum import Enum
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, Optional
 
 import tensorflow as tf
 import apache_beam as beam
@@ -8,14 +8,13 @@ from apache_beam.pvalue import PCollection
 
 
 class SampleType: #(Enum):
-    TRAIN_SLIDING = 0
-    TRAIN_LAST = 1
-    VALIDATION = 2
-    TEST = 3
+    TRAIN = 0
+    VALIDATION = 1
+    TEST = 2
 
 
 def _sort_views_by_timestamp(group) -> List[int]:
-    views = group[0][1]
+    views = group[1]
     views.sort(key=lambda x: x[-1])
     return [v[0] for v in views]
 
@@ -23,41 +22,49 @@ def _sort_views_by_timestamp(group) -> List[int]:
 def _generate_examples_from_complete_sequences(
     complete_sequence: List[int],
     max_context_len: int,
-    proporition_sliding_window: float,
+    get_slided_samples_fn,
+    proportion_sliding_window: Optional[float] = None,
+    sliding_window_step_size_override: Optional[int] = None,
 ):
     """
     Generate user sequences from a single complete user sequence using a sliding window.
-    If user complete sequence is shorter than max_context_len, sequence will be padded with 0s.
 
     :param complete_sequence: The complete sequence to generate examples from (A list of ids).
     :param max_context_len: The maximum length of the context.
-    :param sliding_window_step_size: The size of the step in the sliding window.
-    :param duplication_factor: The number of time each sequence should be duplicated (considering different random input
-    will be masked)
-    :param nb_max_masked_ids_per_seq: The maximal number of ids that can be masked for prediction in a sequence
-    :param masked_lm_prob: The probability that an id in a sequence will be masked for prediction
+    :param proportion_sliding_window: The proportion of the complete user sequence that will be used as the size of
+    the step in the sliding window used to create the training sequences.
+    :param sliding_window_step_size_override: Ability to override the step size proportion with an explicit step size
+    number.
 
     :return: examples: Generated examples from this single timeline.
     """
+    def _get_sliding_window_step_size(
+        max_context_len: int,
+        proportion_sliding_window: float = None,
+        sliding_window_step_size_override: int = None,
+    ):
+        if sliding_window_step_size_override:
+            return sliding_window_step_size_override
+        if proportion_sliding_window:
+            return int(proportion_sliding_window * max_context_len)
+        return max_context_len
 
-    def _get_new_example(complete_sequence, start_idx, max_context_len, sample_type):
-        end_idx = start_idx + max_context_len
+    sliding_window_step_size = _get_sliding_window_step_size(
+        max_context_len, proportion_sliding_window, sliding_window_step_size_override
+    )
+
+    return get_slided_samples_fn(complete_sequence, max_context_len, sliding_window_step_size)
+
+
+def _get_bert4rec_slided_samples(complete_sequence, max_context_len, sliding_window_step_size):
+    def _get_new_example(complete_sequence, start_idx, end_idx, sample_type):
         input_ids = complete_sequence[start_idx:end_idx]
-        input_mask = [1] * len(input_ids)
-        # Pad sequence with 0s.
-        while len(input_ids) < max_context_len:
-            input_ids.append(0)
-            input_mask.append(0)
         return {
             "input_ids": input_ids,
-            "input_mask": input_mask,
             "sample_type": sample_type,
         }
 
     examples = []
-    sliding_window_step_size = max_context_len
-    if proporition_sliding_window != -1.0:
-        sliding_window_step_size = int(proporition_sliding_window * max_context_len)
 
     # The last 2 tokens of each sequence is for validation and testing
     train_sequence_len = len(complete_sequence) - 2
@@ -66,41 +73,90 @@ def _generate_examples_from_complete_sequences(
     start_indexes = list(range(train_sequence_len - max_context_len, 0, -sliding_window_step_size))
     start_indexes.append(0)
     for start_idx in start_indexes[::-1]:
-        example = _get_new_example(train_complete_sequence, start_idx, max_context_len, sample_type=0)
+        end_idx = start_idx + max_context_len
+        example = _get_new_example(train_complete_sequence, start_idx, end_idx, sample_type=0)
+        assert len(example["input_ids"]) >= 3
         examples.append(example)
 
-    # Add a train sequence for last index masking
-    example = _get_new_example(train_complete_sequence, start_idx, max_context_len, sample_type=1)
-    examples.append(example)
-
     # Add validation sequence
-    start_idx_validation = len(complete_sequence) - max_context_len - 1
-    example = _get_new_example(complete_sequence, start_idx_validation, max_context_len, sample_type=2)
+    end_idx_validation = len(complete_sequence) - 1
+    start_idx_validation = max(0, end_idx_validation - max_context_len)
+    example = _get_new_example(complete_sequence, start_idx_validation, end_idx_validation, sample_type=1)
+    assert len(example["input_ids"]) >= 4
     examples.append(example)
 
     # Add test sequence
-    start_idx_test = len(complete_sequence) - max_context_len
-    example = _get_new_example(complete_sequence, start_idx_test, max_context_len, sample_type=3)
+    end_idx_test = len(complete_sequence)
+    start_idx_test = max(0, end_idx_test - max_context_len)
+    example = _get_new_example(complete_sequence, start_idx_test, end_idx_test, sample_type=2)
+    if len(example["input_ids"]) < 5:
+        print(f"len(complete_sequence) = {len(complete_sequence)}")
+        print(f"len(example['input_ids']) = {len(example['input_ids'])}")
+        print(f"start_idx_test = {start_idx_test}")
+        print(f"end_idx_test = {start_idx_test+max_context_len}")
+        print(f"sequence = {complete_sequence[start_idx_test:(start_idx_test+max_context_len)]}")
+        raise Exception("WTF")
     examples.append(example)
 
     return examples
 
 
-def _augment_training_sequences_and_set_masks(
+def _get_gru4rec_slided_samples(complete_sequence, max_context_len, sliding_window_step_size):
+    def _get_new_example(complete_sequence, start_idx, end_idx, sample_type):
+        input_ids = complete_sequence[start_idx:end_idx]
+        return {
+            "input_ids": input_ids,
+            "sample_type": sample_type,
+        }
+
+    examples = []
+
+    # Add train sequences. The last 2 tokens of each sequence is for validation and testing
+    sequence_len = len(complete_sequence)
+    end_indexes = list(range(1, sequence_len - 1, sliding_window_step_size))
+    start_indexes = [max(0, idx - max_context_len) for idx in end_indexes]
+    for start_idx, end_idx in zip(start_indexes, end_indexes):
+        example = _get_new_example(complete_sequence, start_idx, end_idx, sample_type=0)
+        examples.append(example)
+
+    # Add validation sequence
+    end_idx_validation = len(complete_sequence) - 1
+    start_idx_validation = max(0, end_idx_validation - max_context_len)
+    example = _get_new_example(complete_sequence, start_idx_validation, end_idx_validation, sample_type=1)
+    examples.append(example)
+
+    # Add test sequence
+    end_idx_test = len(complete_sequence)
+    start_idx_test = max(0, end_idx_test - max_context_len)
+    example = _get_new_example(complete_sequence, start_idx_test, end_idx_test, sample_type=2)
+    examples.append(example)
+
+    return examples
+
+
+def _prepare_bert4rec_train_samples(
     sample: Dict[str, Any],
+    max_context_len: int,
     duplication_factor: int,
     nb_max_masked_ids_per_seq: int,
     mask_ratio: float,
-):
+) -> List[Dict[str, Any]]:
     """
+    If user complete sequence is shorter than max_context_len, sequence will be padded with 0s.
 
     """
     import random
 
+    nb_filled_input_ids = len(sample["input_ids"])
+    # Pad sequence with 0s.
+    sample["input_mask"] = [1] * nb_filled_input_ids
+    while len(sample["input_ids"]) < max_context_len:
+        sample["input_ids"].append(0)
+        sample["input_mask"].append(0)
+
     all_augmented_samples = []
     if sample["sample_type"] == 0:
         input_ids = list(sample["input_ids"])
-        nb_filled_input_ids = sum(sample["input_mask"])
         for _ in range(duplication_factor):
             nb_ids_to_mask = min(nb_max_masked_ids_per_seq, max(1, int(nb_filled_input_ids * mask_ratio)))
 
@@ -129,7 +185,6 @@ def _augment_training_sequences_and_set_masks(
             augmented_sample = {
                 "input_ids": input_ids,
                 "input_mask": sample["input_mask"],
-                "sample_type": sample["sample_type"],
                 "masked_lm_positions": masked_lm_positions,
                 "masked_lm_ids": masked_lm_ids,
                 "masked_lm_weights": masked_lm_weights,
@@ -138,7 +193,6 @@ def _augment_training_sequences_and_set_masks(
     else:
         def __set_mask_last_position(sample):
             input_ids = sample["input_ids"]
-            nb_filled_input_ids = sum(sample["input_mask"])
             masked_lm_position = nb_filled_input_ids - 1
             masked_lm_positions = [masked_lm_position]
             masked_lm_ids = [input_ids[masked_lm_position]]
@@ -153,7 +207,6 @@ def _augment_training_sequences_and_set_masks(
             return {
                 "input_ids": input_ids,
                 "input_mask": sample["input_mask"],
-                "sample_type": sample["sample_type"],
                 "masked_lm_positions": masked_lm_positions,
                 "masked_lm_ids": masked_lm_ids,
                 "masked_lm_weights": masked_lm_weights
@@ -165,18 +218,33 @@ def _augment_training_sequences_and_set_masks(
     return all_augmented_samples
 
 
-def _set_mask_last_position(sample: Dict[str, Any]):
+def _prepare_bert4rec_val_test_sample(sample: Dict[str, Any]) -> List[Dict[str, Any]]:
     input_ids = sample["input_ids"]
     nb_filled_input_ids = sum(sample["input_mask"])
     masked_lm_position = nb_filled_input_ids - 1
-    return {
+    return [{
         "input_ids": input_ids,
         "input_mask": sample["input_mask"],
-        "sample_type": sample["sample_type"],
         "masked_lm_positions":  [masked_lm_position],
         "masked_lm_ids": [input_ids[masked_lm_position]],
         "masked_lm_weights": [1.0]
-    }
+    }]
+
+
+def _prepare_gru4rec_samples(sample: Dict[str, Any], max_context_len: int, **kwargs) -> List[Dict[str, Any]]:
+    input_ids = sample["input_ids"][:-1]
+    label = sample["input_ids"][-1]
+    input_mask = [1] * len(input_ids)
+
+    while len(input_ids) < max_context_len:
+        input_ids.append(0)
+        input_mask.append(0)
+
+    return [{
+        "input_ids": input_ids,
+        "input_mask": input_mask,
+        "label": [label],
+    }]
 
 
 def _count_movies_in_ratings(train_samples: PCollection):
@@ -189,7 +257,7 @@ def _count_movies_in_ratings(train_samples: PCollection):
     )
 
 
-def _serialize_in_tfrecords(x):
+def _serialize_bert4rec_tfrecords(x):
     import tensorflow as tf
 
     feature = {
@@ -203,8 +271,20 @@ def _serialize_in_tfrecords(x):
     return tf_example.SerializeToString()
 
 
-def _save_in_tfrecords(data_dir: str, examples: PCollection, data_desc: str):
-    output_dir = f"{data_dir}/tfrecords/{data_desc}"
+def _serialize_gru4rec_tfrecords(x):
+    import tensorflow as tf
+
+    feature = {
+        "input_ids": tf.train.Feature(int64_list=tf.train.Int64List(value=x["input_ids"])),
+        "input_mask": tf.train.Feature(int64_list=tf.train.Int64List(value=x["input_mask"])),
+        "label": tf.train.Feature(int64_list=tf.train.Int64List(value=x["label"])),
+    }
+    tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
+    return tf_example.SerializeToString()
+
+
+def _save_in_tfrecords(data_dir: str, dataset_dir_version_name: str, examples: PCollection, data_desc: str):
+    output_dir = f"{data_dir}/tfrecords/{dataset_dir_version_name}/{data_desc}"
     if not tf.io.gfile.exists(output_dir):
         tf.io.gfile.makedirs(output_dir)
     prefix = f"{output_dir}/data"
@@ -227,32 +307,38 @@ def _filter_examples_per_sample_type(examples_per_user: PCollection, sample_type
     return examples_per_user | f"Filter {sample_type}" >> beam.Filter(lambda x: x["sample_type"] == sample_type)
 
 
-def _filter_examples_per_sample_types(examples_per_user: PCollection, sample_type1: int, sample_type2: int) -> PCollection:
-    return examples_per_user | f"Filter {sample_type1} and {sample_type2}" >> beam.Filter(lambda x: (x["sample_type"] == sample_type1) or (x["sample_type"] == sample_type2))
-
-
 def preprocess_with_dataflow(
     data_dir: str,
+    dataset_dir_version_name: str,
     max_context_len: int,
-    proporition_sliding_window: float,
-    duplication_factor: int,
-    nb_max_masked_ids_per_seq: int,
-    mask_ratio: float,
     implicit_rating_threshold: float,
+    get_slided_samples_fn,
+    prepare_train_sample_fn,
+    prepare_val_test_sample_fn,
+    serialize_records_fn,
+    duplication_factor: Optional[int] = None,
+    nb_max_masked_ids_per_seq: Optional[int] = None,
+    mask_ratio: Optional[float] = None,
+    proportion_sliding_window: Optional[float] = None,
+    sliding_window_step_size_override: Optional[int] = None,
 ):
     """
     Preprocess the data: read ratings from CSV file and transform them into ready to train serialized tensors in
     Tensorflow tensor records format.
     :param data_dir: The directory from where to find the ratings CSV file
+    :param dataset_dir_version_name: The name of the directory under which we will save the tfrecords. Used to identify
+    the version of the dataset.
     :param max_context_len: The maximum length a user sequence can have
-    :param sliding_window_step_size: The size of the step in the sliding window used to create the training sequences
-    from a complete user sequence.
     :param duplication_factor: The number of time each sequence should be duplicated (considering different random input
     will be masked)
     :param nb_max_masked_ids_per_seq: The maximal number of ids that can be masked in a sequence
     :param mask_ratio: The ratio of input ids to mask for prediction
     :param implicit_rating_threshold: The threshold used to decide whether a rating is an implicit positive sample or
     negative
+    :param proportion_sliding_window: The proportion of the complete user sequence that will be used as the size of
+    the step in the sliding window used to create the training sequences.
+    :param sliding_window_step_size_override: Ability to override the step size proportion with an explicit step size
+    number.
     """
     import os
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/adrienbiarnes/Projects/bert4rec/credentials.json"
@@ -265,9 +351,10 @@ def preprocess_with_dataflow(
         temp_location="gs://movie-lens-25m/beam/tmp",
         job_name="ml-25m-preprocess",
         num_workers=8,
-        region="us-central1",
+        region="us-east1",
         sdk_container_image="northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess",
     )
+    # options = beam.pipeline.PipelineOptions()
     with beam.Pipeline(options=options) as pipeline:
         raw_ratings = (
             pipeline
@@ -280,8 +367,7 @@ def preprocess_with_dataflow(
             raw_ratings
             | "Select columns" >> beam.Map(lambda x: (x["userId"], (x["movieId"], x["timestamp"])))
             | "Group By User Id" >> beam.GroupByKey()
-            | "Add Views Counts" >> beam.Map(lambda x: (x, len(x[1])))
-            | "Filter If Not Enough Views" >> beam.Filter(lambda x: x[1] >= 5)
+            | "Filter If Not Enough Views" >> beam.Filter(lambda x: len(x[1]) >= 5)
             | "Sort Views By Timestamp" >> beam.Map(_sort_views_by_timestamp)
         )
 
@@ -291,13 +377,15 @@ def preprocess_with_dataflow(
             beam.Map(
                 _generate_examples_from_complete_sequences,
                 max_context_len=max_context_len,
-                proporition_sliding_window=proporition_sliding_window,
+                get_slided_samples_fn=get_slided_samples_fn,
+                proportion_sliding_window=proportion_sliding_window,
+                sliding_window_step_size_override=sliding_window_step_size_override
             )
             | f"Flatten examples" >> beam.FlatMap(lambda x: x)
         )
 
         # Split examples
-        train_examples = _filter_examples_per_sample_types(examples, SampleType.TRAIN_SLIDING, SampleType.TRAIN_LAST)
+        train_examples = _filter_examples_per_sample_type(examples, SampleType.TRAIN)
         val_examples = _filter_examples_per_sample_type(examples, SampleType.VALIDATION)
         test_examples = _filter_examples_per_sample_type(examples, SampleType.TEST)
 
@@ -305,25 +393,38 @@ def preprocess_with_dataflow(
         train_examples = (
             train_examples
             | "Augment training data and set masks" >> beam.Map(
-                _augment_training_sequences_and_set_masks,
+                prepare_train_sample_fn,
+                max_context_len=max_context_len,
                 duplication_factor=duplication_factor,
                 nb_max_masked_ids_per_seq=nb_max_masked_ids_per_seq,
                 mask_ratio=mask_ratio,
             )
-            | "Flatten augmented training examples" >> beam.FlatMap(lambda x: x)
+            | "Flatten training examples" >> beam.FlatMap(lambda x: x)
         )
-        val_examples = val_examples | "Set mask last position - val" >> beam.Map(_set_mask_last_position)
-        test_examples = test_examples | "Set mask last position - test" >> beam.Map(_set_mask_last_position)
+        val_examples = (
+            val_examples | "Set mask last position - val" >> beam.Map(
+                prepare_val_test_sample_fn,
+                max_context_len=max_context_len
+            )
+            | "Flatten val examples" >> beam.FlatMap(lambda x: x)
+        )
+        test_examples = (
+            test_examples | "Set mask last position - test" >> beam.Map(
+                prepare_val_test_sample_fn,
+                max_context_len=max_context_len
+            )
+            | "Flatten test examples" >> beam.FlatMap(lambda x: x)
+        )
 
         # Serialize
-        train_tf_examples = train_examples | "Serialize train" >> beam.Map(_serialize_in_tfrecords) | beam.Reshuffle()
-        val_tf_examples = val_examples | "Serialize val" >> beam.Map(_serialize_in_tfrecords)
-        test_tf_examples = test_examples | "Serialize test" >> beam.Map(_serialize_in_tfrecords)
+        train_tf_examples = train_examples | "Serialize train" >> beam.Map(serialize_records_fn) | beam.Reshuffle()
+        val_tf_examples = val_examples | "Serialize val" >> beam.Map(serialize_records_fn)
+        test_tf_examples = test_examples | "Serialize test" >> beam.Map(serialize_records_fn)
 
         # Save to disk
-        _save_in_tfrecords(data_dir, train_tf_examples, data_desc="train")
-        _save_in_tfrecords(data_dir, val_tf_examples, data_desc="val")
-        _save_in_tfrecords(data_dir, test_tf_examples, data_desc="test")
+        _save_in_tfrecords(data_dir, dataset_dir_version_name, train_tf_examples, data_desc="train")
+        _save_in_tfrecords(data_dir, dataset_dir_version_name, val_tf_examples, data_desc="val")
+        _save_in_tfrecords(data_dir, dataset_dir_version_name, test_tf_examples, data_desc="test")
 
         # Count vocab
         train_movie_counts = _count_movies_in_ratings(train_examples)
@@ -331,12 +432,31 @@ def preprocess_with_dataflow(
 
 
 if __name__ == "__main__":
+    # BERT4REC preparation
+    # preprocess_with_dataflow(
+    #     data_dir="gs://movie-lens-25m",
+    #     dataset_dir_version_name="bert4rec_dup10_05_slidprop",
+    #     max_context_len=200,
+    #     implicit_rating_threshold=2.0,
+    #     get_slided_samples_fn=_get_bert4rec_slided_samples,
+    #     prepare_train_sample_fn=_prepare_bert4rec_train_samples,
+    #     prepare_val_test_sample_fn=_prepare_bert4rec_val_test_sample,
+    #     serialize_records_fn=_serialize_bert4rec_tfrecords,
+    #     duplication_factor=10,
+    #     nb_max_masked_ids_per_seq=20,
+    #     mask_ratio=0.2,
+    #     proportion_sliding_window=0.5
+    # )
+
+    # GRU4REC preparation
     preprocess_with_dataflow(
         data_dir="gs://movie-lens-25m",
+        dataset_dir_version_name="gru4rec_full_slide",
         max_context_len=200,
-        proporition_sliding_window=0.5,
-        duplication_factor=10,
-        nb_max_masked_ids_per_seq=20,
-        mask_ratio=0.2,
         implicit_rating_threshold=2.0,
+        get_slided_samples_fn=_get_gru4rec_slided_samples,
+        prepare_train_sample_fn=_prepare_gru4rec_samples,
+        prepare_val_test_sample_fn=_prepare_gru4rec_samples,
+        serialize_records_fn=_serialize_gru4rec_tfrecords,
+        sliding_window_step_size_override=1
     )

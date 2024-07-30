@@ -1,7 +1,9 @@
 import tensorflow as tf
+import keras
+# import tf_keras as keras
 
 
-class MaskedRecall(tf.keras.metrics.Metric):
+class MaskedRecall(keras.metrics.Metric):
     def __init__(self, k: int, name="recall", pad_token: int = 0, **kwargs):
         super().__init__(name=f"{name}_at_{k}", **kwargs)
         self._cumulative_recall = tf.Variable(0.0)
@@ -24,7 +26,7 @@ class MaskedRecall(tf.keras.metrics.Metric):
             be broadcastable to `y_true`.
         """
         y_true = tf.cast(y_true, dtype=tf.int32)
-        y_true = tf.expand_dims(y_true, axis=-1)
+        # y_true = tf.expand_dims(y_true, axis=-1)
         top_indices = tf.math.top_k(y_pred, k=self._k).indices
         match = y_true == top_indices
         recall_k = tf.cast(match, dtype=tf.float32)
