@@ -54,8 +54,8 @@ def run_training(config: Config):
         validation_steps=data.nb_val // config.batch_size,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir="logs", update_freq=100),
-            tf.keras.callbacks.EarlyStopping(patience=15),
-            tf.keras.callbacks.ModelCheckpoint(save_filepath, save_best_only=True),
+            tf.keras.callbacks.EarlyStopping(monitor="val_fixed_loss", mode="min", patience=15),
+            tf.keras.callbacks.ModelCheckpoint(save_filepath, monitor="val_fixed_loss", mode="min", save_best_only=True),
         ],
         verbose=1,
     )

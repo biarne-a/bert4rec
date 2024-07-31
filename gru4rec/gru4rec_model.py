@@ -44,7 +44,8 @@ class Gru4RecModel(keras.models.Model):
 
         self.compiled_metrics.update_state(y_true, y_pred)
         metric_values = {m.name: m.result() for m in self.metrics}
-        metric_values["loss"] = loss
+        metric_values.pop("loss")
+        metric_values["fixed_loss"] = loss
         return metric_values
 
     @tf.function(input_signature=step_signature)
@@ -52,11 +53,12 @@ class Gru4RecModel(keras.models.Model):
         y_true = inputs["label"]
         y_pred = self(inputs, training=False)
 
-        loss = self.compute_loss(inputs, y_true, y_pred, training=True)
+        loss = self.compute_loss(inputs, y_true, y_pred, training=False)
         self.compiled_metrics.update_state(y_true, y_pred)
 
         metric_values = {m.name: m.result() for m in self.metrics}
-        metric_values["loss"] = loss
+        metric_values.pop("loss")
+        metric_values["fixed_loss"] = loss
         return metric_values
 
     def get_config(self):
