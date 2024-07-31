@@ -5,8 +5,10 @@ channels:
 dependencies:
   - python=3.9
   - pip
+  - tensorflow-deps
   - pip:
-    - tensorflow==2.14.0
+    - tensorflow-macos==2.14.0
+    - tensorflow-metal==1.1.0
     - matplotlib==3.7.1
     - pandas==2.0.0
     - jupyterlab==3.6.5

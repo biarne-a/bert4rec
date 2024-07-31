@@ -6,7 +6,7 @@ build_preprocess:
 
 
 install_mac_m2:
-    CONDA_SUBDIR=osx-arm64 conda env create -n bert4rec-m2 -f conda-env.yaml
+    CONDA_SUBDIR=osx-arm64 conda env create -n bert4rec-m2 -f conda-env-macos.yaml
 
 
 install:
