@@ -49,13 +49,13 @@ def run_training(config: Config):
     history = model.fit(
         x=data.train_ds,
         epochs=1_000,
-        steps_per_epoch=data.nb_train // config.batch_size,
+        steps_per_epoch=data.nb_train_batches,
         validation_data=data.val_ds,
-        validation_steps=data.nb_val // config.batch_size,
+        validation_steps=data.nb_val_batches,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir="logs", update_freq=100),
-            tf.keras.callbacks.EarlyStopping(monitor="val_fixed_loss", mode="min", patience=1),
-            tf.keras.callbacks.ModelCheckpoint(save_filepath, monitor="val_fixed_loss", mode="min", save_best_only=True),
+            tf.keras.callbacks.EarlyStopping(monitor="val_masked_map_at_10", mode="max", patience=3),
+            tf.keras.callbacks.ModelCheckpoint(save_filepath, monitor="val_masked_map_at_10", mode="max", save_best_only=True),
         ],
         verbose=1,
     )
@@ -70,4 +70,5 @@ def run_evaluation(config: Config):
         "MaskedRecall": MaskedRecall,
         "MaskedMeanAveragePrecision": MaskedMeanAveragePrecision,
     })
+    model.evaluate(data.test_ds, steps=data.nb_test_batches)
     save_predictions(config, data, model)

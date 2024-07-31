@@ -17,7 +17,7 @@ def save_history(history: keras.callbacks.History, config: Config):
 
 
 def save_predictions(config: Config, data: Data, model: BERT4RecModel, k: int = 10):
-    nb_test_batches = data.nb_test // config.batch_size
+    nb_test_batches = data.nb_test_batches
     label_column = config.model_config.label_column
     local_filename = f"{config.results_dir}/predictions.csv"
     with tf.io.gfile.GFile(local_filename, "w") as fileh:

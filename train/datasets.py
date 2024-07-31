@@ -11,20 +11,26 @@ class Data:
         self,
         train_ds: tf.data.Dataset,
         nb_train: int,
+        nb_train_batches: int,
         val_ds: tf.data.Dataset,
         nb_val: int,
+        nb_val_batches: int,
         test_ds: tf.data.Dataset,
         nb_test: int,
+        nb_test_batches: int,
         movie_id_counts: Dict[str, int],
         movie_id_lookup: tf.keras.layers.StringLookup,
         reverse_movie_id_lookup: tf.keras.layers.StringLookup,
     ):
         self.train_ds = train_ds
         self.nb_train = nb_train
+        self.nb_train_batches = nb_train_batches
         self.val_ds = val_ds
         self.nb_val = nb_val
+        self.nb_val_batches = nb_val_batches
         self.test_ds = test_ds
         self.nb_test = nb_test
+        self.nb_test_batches = nb_test_batches
         self.movie_id_counts = movie_id_counts
         self.movie_id_lookup = movie_id_lookup
         self.reverse_movie_id_lookup = reverse_movie_id_lookup
@@ -78,28 +84,47 @@ def get_data(config: Config):
     train_parse_function = _get_parse_function(train_features_description)
     val_and_test_parse_function = _get_parse_function(val_and_test_features_description)
 
+    nb_train = 21_464_749
+    nb_val = 162_407
+    nb_test = 162_407
+
+    nb_train_batches = nb_train // config.batch_size
+    nb_val_batches = nb_val // config.batch_size
+    nb_test_batches = nb_test // config.batch_size
+
     setup_batch_fn = config.model_config.get_setup_batch_fn(movie_id_lookup)
-    train_ds = train_ds.map(train_parse_function).batch(config.batch_size).map(setup_batch_fn).repeat()
+    train_ds = (
+      train_ds.map(train_parse_function)
+              .batch(config.batch_size)
+              .map(setup_batch_fn)
+              .take(nb_train_batches)
+              .repeat()
+    )
     val_ds = (
         val_ds.map(val_and_test_parse_function)
-              .batch(config.batch_size).map(setup_batch_fn).repeat()
+              .batch(config.batch_size)
+              .map(setup_batch_fn)
+              .take(nb_val_batches)
+              .repeat()
     )
     test_ds = (
         test_ds.map(val_and_test_parse_function)
-               .batch(config.batch_size).map(setup_batch_fn).repeat()
+               .batch(config.batch_size)
+               .map(setup_batch_fn)
+               .take(nb_test_batches)
+               .repeat()
     )
-
-    nb_train = 21_464_749
-    nb_test = 162_407
-    nb_val = 162_407
 
     return Data(
         train_ds,
         nb_train,
+        nb_train_batches,
         val_ds,
         nb_val,
+        nb_val_batches,
         test_ds,
         nb_test,
+        nb_test_batches,
         unique_train_movie_id_counts,
         movie_id_lookup,
         reverse_movie_id_lookup
