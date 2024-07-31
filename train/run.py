@@ -28,7 +28,7 @@ def set_seed():
 
 
 def _get_model_save_filepath(config: Config) -> str:
-    return f"{config.results_dir}/model"
+    return f"{config.results_dir}/model.keras"
 
 
 def run_training(config: Config):
@@ -37,7 +37,7 @@ def run_training(config: Config):
     data = get_data(config)
     model = config.model_config.build_model(data)
     model.compile(
-        optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=config.learning_rate),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         weighted_metrics=[
             MaskedRecall(k=10),
@@ -49,12 +49,12 @@ def run_training(config: Config):
     history = model.fit(
         x=data.train_ds,
         epochs=1_000,
-        steps_per_epoch=1_000,
+        steps_per_epoch=5_000,
         validation_data=data.val_ds,
         validation_steps=data.nb_val // config.batch_size,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir="logs", update_freq=100),
-            tf.keras.callbacks.EarlyStopping(patience=20),
+            tf.keras.callbacks.EarlyStopping(patience=15),
             tf.keras.callbacks.ModelCheckpoint(save_filepath, save_best_only=True),
         ],
         verbose=1,
