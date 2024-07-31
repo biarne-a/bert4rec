@@ -17,6 +17,6 @@ def get_setup_batch_fn(movie_id_lookup: tf.keras.layers.StringLookup):
         return {
             "label": movie_id_lookup(tf.strings.as_string(x["label"])),
             "input_ids": movie_id_lookup(tf.strings.as_string(x["input_ids"])),
-            "input_mask": tf.cast(x["input_mask"], tf.bool)
+            "input_mask": x["input_mask"]
         }
     return _setup_batch

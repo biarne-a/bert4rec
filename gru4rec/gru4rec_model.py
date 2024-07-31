@@ -8,7 +8,7 @@ from train.metrics import MaskedRecall
 
 step_signature = [{
     "input_ids": tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-    "input_mask": tf.TensorSpec(shape=(None, None), dtype=tf.bool),
+    "input_mask": tf.TensorSpec(shape=(None, None), dtype=tf.int64),
     "label": tf.TensorSpec(shape=(None, 1), dtype=tf.int64),
 }]
 
@@ -22,14 +22,28 @@ class Gru4RecModel(keras.models.Model):
         self._dropout_p_hidden = dropout_p_hidden
         self._movie_id_embedding = tf.keras.layers.Embedding(vocab_size + 1, hidden_size)
         self._dropout_emb = tf.keras.layers.Dropout(dropout_p_embed)
-        self._gru_layer = tf.keras.layers.GRU(hidden_size, recurrent_dropout=dropout_p_hidden) #, use_cudnn=False
+        self._gru_layer = tf.keras.layers.GRU(hidden_size, return_sequences=True, recurrent_dropout=dropout_p_hidden)
         self._recall_metric = MaskedRecall(k=10)
 
     def call(self, inputs, training=False):
         ctx_movie_emb = self._movie_id_embedding(inputs["input_ids"])
         ctx_movie_emb = self._dropout_emb(ctx_movie_emb, training=training)
-        hidden = self._gru_layer(ctx_movie_emb, training=training) #, mask=inputs["input_mask"]
-        logits = tf.matmul(hidden, tf.transpose(self._movie_id_embedding.embeddings))
+        gru_output = self._gru_layer(ctx_movie_emb, training=training)
+        sequence_lengths = tf.cast(
+          tf.reduce_sum(inputs["input_mask"], axis=1), tf.int32
+        )
+        # slice the gru sequence of output hidden state to get the last hidden
+        # state according to sequence lengths
+        batch_size = tf.shape(inputs["input_mask"])[0]
+        last_hidden_state_idx = tf.concat(
+            [
+                tf.expand_dims(tf.range(0, batch_size), 1),
+                tf.expand_dims(sequence_lengths - 1, 1),
+            ],
+            axis=1,
+        )
+        last_hidden_state = tf.gather_nd(gru_output, last_hidden_state_idx)
+        logits = tf.matmul(last_hidden_state, tf.transpose(self._movie_id_embedding.embeddings))
         return logits
 
     @tf.function(input_signature=step_signature)
