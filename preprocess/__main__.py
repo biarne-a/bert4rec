@@ -149,76 +149,73 @@ def _prepare_bert4rec_train_samples(
 
     nb_filled_input_ids = len(sample["input_ids"])
     # Pad sequence with 0s.
-    sample["input_mask"] = [1] * nb_filled_input_ids
-    while len(sample["input_ids"]) < max_context_len:
-        sample["input_ids"].append(0)
-        sample["input_mask"].append(0)
+    input_ids = list(sample["input_ids"])
+    input_mask = [1] * nb_filled_input_ids
+    while len(input_ids) < max_context_len:
+        input_ids.append(0)
+        input_mask.append(0)
 
     all_augmented_samples = []
-    if sample["sample_type"] == 0:
-        input_ids = list(sample["input_ids"])
-        for _ in range(duplication_factor):
-            nb_ids_to_mask = min(nb_max_masked_ids_per_seq, max(1, int(nb_filled_input_ids * mask_ratio)))
+    for _ in range(duplication_factor):
+        nb_ids_to_mask = min(nb_max_masked_ids_per_seq, max(1, int(nb_filled_input_ids * mask_ratio)))
 
-            masked_lm_ids = []
-            masked_lm_positions = []
-            masked_lm_weights = []
+        masked_lm_ids = []
+        masked_lm_positions = []
+        masked_lm_weights = []
 
-            # Shuffle the positions
-            shuffled_id_positions = list(range(nb_filled_input_ids))
-            random.shuffle(shuffled_id_positions)
+        # Shuffle the positions
+        shuffled_id_positions = list(range(nb_filled_input_ids))
+        random.shuffle(shuffled_id_positions)
 
-            # And take the required number of masked ids
-            for idx in range(nb_ids_to_mask):
-                masked_position = shuffled_id_positions[idx]
-                masked_lm_id = input_ids[masked_position]
-                masked_lm_positions.append(masked_position)
-                masked_lm_ids.append(masked_lm_id)
-                masked_lm_weights.append(1.0)
+        # And take the required number of masked ids
+        for idx in range(nb_ids_to_mask):
+            masked_position = shuffled_id_positions[idx]
+            masked_lm_id = input_ids[masked_position]
+            masked_lm_positions.append(masked_position)
+            masked_lm_ids.append(masked_lm_id)
+            masked_lm_weights.append(1.0)
 
-            # Pad the masks to obtain a complete sequence up to the maximum allowed
-            while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
-                masked_lm_positions.append(0)
-                masked_lm_ids.append(0)
-                masked_lm_weights.append(0.0)
+        # Pad the masks to obtain a complete sequence up to the maximum allowed
+        while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
+            masked_lm_positions.append(0)
+            masked_lm_ids.append(0)
+            masked_lm_weights.append(0.0)
 
-            augmented_sample = {
-                "input_ids": input_ids,
-                "input_mask": sample["input_mask"],
-                "masked_lm_positions": masked_lm_positions,
-                "masked_lm_ids": masked_lm_ids,
-                "masked_lm_weights": masked_lm_weights,
-            }
-            all_augmented_samples.append(augmented_sample)
-    else:
-        def __set_mask_last_position(sample):
-            input_ids = sample["input_ids"]
-            masked_lm_position = nb_filled_input_ids - 1
-            masked_lm_positions = [masked_lm_position]
-            masked_lm_ids = [input_ids[masked_lm_position]]
-            masked_lm_weights = [1.0]
+        augmented_sample = {
+            "input_ids": input_ids,
+            "input_mask": input_mask,
+            "masked_lm_positions": masked_lm_positions,
+            "masked_lm_ids": masked_lm_ids,
+            "masked_lm_weights": masked_lm_weights,
+        }
+        all_augmented_samples.append(augmented_sample)
 
-            # Pad the masks to obtain a complete sequence up to the maximum allowed
-            while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
-                masked_lm_positions.append(0)
-                masked_lm_ids.append(0)
-                masked_lm_weights.append(0.0)
+    # Add another augmented sample for last position masking
+    masked_lm_position = nb_filled_input_ids - 1
+    masked_lm_positions = [masked_lm_position]
+    masked_lm_ids = [input_ids[masked_lm_position]]
+    masked_lm_weights = [1.0]
 
-            return {
-                "input_ids": input_ids,
-                "input_mask": sample["input_mask"],
-                "masked_lm_positions": masked_lm_positions,
-                "masked_lm_ids": masked_lm_ids,
-                "masked_lm_weights": masked_lm_weights
-            }
+    # Pad the masks to obtain a complete sequence up to the maximum allowed
+    while len(masked_lm_positions) < nb_max_masked_ids_per_seq:
+        masked_lm_positions.append(0)
+        masked_lm_ids.append(0)
+        masked_lm_weights.append(0.0)
 
-        # Mask last position to match the val and test sets settings
-        last_position_masked_sample = __set_mask_last_position(sample)
-        all_augmented_samples.append(last_position_masked_sample)
+    last_position_masked_sample = {
+        "input_ids": input_ids,
+        "input_mask": input_mask,
+        "masked_lm_positions": masked_lm_positions,
+        "masked_lm_ids": masked_lm_ids,
+        "masked_lm_weights": masked_lm_weights
+    }
+
+    # Mask last position to match the val and test sets settings
+    all_augmented_samples.append(last_position_masked_sample)
     return all_augmented_samples
 
 
-def _prepare_bert4rec_val_test_sample(sample: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _prepare_bert4rec_val_test_sample(sample: Dict[str, Any], **kwargs) -> List[Dict[str, Any]]:
     input_ids = sample["input_ids"]
     nb_filled_input_ids = sum(sample["input_mask"])
     masked_lm_position = nb_filled_input_ids - 1
@@ -340,9 +337,6 @@ def preprocess_with_dataflow(
     :param sliding_window_step_size_override: Ability to override the step size proportion with an explicit step size
     number.
     """
-    import os
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/adrienbiarnes/Projects/bert4rec/credentials.json"
-
     options = beam.pipeline.PipelineOptions(
         runner="DataflowRunner",
         experiments=["use_runner_v2"],
@@ -433,30 +427,30 @@ def preprocess_with_dataflow(
 
 if __name__ == "__main__":
     # BERT4REC preparation
-    # preprocess_with_dataflow(
-    #     data_dir="gs://movie-lens-25m",
-    #     dataset_dir_version_name="bert4rec_dup10_05_slidprop",
-    #     max_context_len=200,
-    #     implicit_rating_threshold=2.0,
-    #     get_slided_samples_fn=_get_bert4rec_slided_samples,
-    #     prepare_train_sample_fn=_prepare_bert4rec_train_samples,
-    #     prepare_val_test_sample_fn=_prepare_bert4rec_val_test_sample,
-    #     serialize_records_fn=_serialize_bert4rec_tfrecords,
-    #     duplication_factor=10,
-    #     nb_max_masked_ids_per_seq=20,
-    #     mask_ratio=0.2,
-    #     proportion_sliding_window=0.5
-    # )
-
-    # GRU4REC preparation
     preprocess_with_dataflow(
         data_dir="gs://movie-lens-25m",
-        dataset_dir_version_name="gru4rec_full_slide",
+        dataset_dir_version_name="bert4rec_dup10_05_slidprop",
         max_context_len=200,
         implicit_rating_threshold=2.0,
-        get_slided_samples_fn=_get_gru4rec_slided_samples,
-        prepare_train_sample_fn=_prepare_gru4rec_samples,
-        prepare_val_test_sample_fn=_prepare_gru4rec_samples,
-        serialize_records_fn=_serialize_gru4rec_tfrecords,
-        sliding_window_step_size_override=1
+        get_slided_samples_fn=_get_bert4rec_slided_samples,
+        prepare_train_sample_fn=_prepare_bert4rec_train_samples,
+        prepare_val_test_sample_fn=_prepare_bert4rec_val_test_sample,
+        serialize_records_fn=_serialize_bert4rec_tfrecords,
+        duplication_factor=10,
+        nb_max_masked_ids_per_seq=20,
+        mask_ratio=0.2,
+        proportion_sliding_window=0.5
     )
+
+    # GRU4REC preparation
+    # preprocess_with_dataflow(
+    #     data_dir="gs://movie-lens-25m",
+    #     dataset_dir_version_name="gru4rec_full_slide",
+    #     max_context_len=200,
+    #     implicit_rating_threshold=2.0,
+    #     get_slided_samples_fn=_get_gru4rec_slided_samples,
+    #     prepare_train_sample_fn=_prepare_gru4rec_samples,
+    #     prepare_val_test_sample_fn=_prepare_gru4rec_samples,
+    #     serialize_records_fn=_serialize_gru4rec_tfrecords,
+    #     sliding_window_step_size_override=1
+    # )
