@@ -54,8 +54,8 @@ def run_training(config: Config):
         validation_steps=data.nb_val_batches,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir="logs", update_freq=100),
-            tf.keras.callbacks.EarlyStopping(monitor="val_masked_map_at_10", mode="max", patience=3),
-            tf.keras.callbacks.ModelCheckpoint(save_filepath, monitor="val_masked_map_at_10", mode="max", save_best_only=True),
+            tf.keras.callbacks.EarlyStopping(monitor="val_recall_at_10", mode="max", patience=2),
+            tf.keras.callbacks.ModelCheckpoint(save_filepath, monitor="val_recall_at_10", mode="max", save_best_only=True),
         ],
         verbose=1,
     )
