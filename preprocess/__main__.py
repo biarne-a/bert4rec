@@ -215,13 +215,19 @@ def _prepare_bert4rec_train_samples(
     return all_augmented_samples
 
 
-def _prepare_bert4rec_val_test_sample(sample: Dict[str, Any], **kwargs) -> List[Dict[str, Any]]:
-    input_ids = sample["input_ids"]
-    nb_filled_input_ids = sum(sample["input_mask"])
+def _prepare_bert4rec_val_test_sample(sample: Dict[str, Any], max_context_len: int, **kwargs) -> List[Dict[str, Any]]:
+    input_ids = list(sample["input_ids"])
+    nb_filled_input_ids = len(input_ids)
+    input_mask = [1] * nb_filled_input_ids
+    # Pad sequence with 0s.
+    while len(input_ids) < max_context_len:
+        input_ids.append(0)
+        input_mask.append(0)
+
     masked_lm_position = nb_filled_input_ids - 1
     return [{
         "input_ids": input_ids,
-        "input_mask": sample["input_mask"],
+        "input_mask": input_mask,
         "masked_lm_positions":  [masked_lm_position],
         "masked_lm_ids": [input_ids[masked_lm_position]],
         "masked_lm_weights": [1.0]
@@ -344,8 +350,8 @@ def preprocess_with_dataflow(
         staging_location="gs://movie-lens-25m/beam/stg",
         temp_location="gs://movie-lens-25m/beam/tmp",
         job_name="ml-25m-preprocess",
-        num_workers=8,
-        region="us-east1",
+        num_workers=4,
+        region="northamerica-northeast2",
         sdk_container_image="northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess",
     )
     # options = beam.pipeline.PipelineOptions()
