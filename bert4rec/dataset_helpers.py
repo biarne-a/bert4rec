@@ -18,8 +18,12 @@ def get_features_description(model_config: Bert4RecConfig, nb_max_masked_ids_per
     }
 
 
-def get_setup_batch_fn(batch_size, movie_id_lookup: tf.keras.layers.StringLookup):
-    def _setup_batch(x):
+def get_parse_sample_fn(
+  features_description,
+  movie_id_lookup: tf.keras.layers.StringLookup
+):
+    def _parse_sample(example_proto):
+        x = tf.io.parse_single_example(example_proto, features_description)
         nb_tokens_to_mask = tf.cast(tf.reduce_sum(x["masked_lm_weights"]), tf.int32)
         masked_lm_positions = tf.slice(x["masked_lm_positions"], [0], [nb_tokens_to_mask])
         masked_lm_ids = tf.gather(x["input_ids"], x["masked_lm_positions"])
@@ -32,4 +36,4 @@ def get_setup_batch_fn(batch_size, movie_id_lookup: tf.keras.layers.StringLookup
         x["masked_lm_ids"] = movie_id_lookup(tf.strings.as_string(masked_lm_ids))
         return x
 
-    return _setup_batch
+    return _parse_sample

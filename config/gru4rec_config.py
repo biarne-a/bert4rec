@@ -36,13 +36,16 @@ class Gru4RecConfig(ModelConfig):
         from gru4rec.dataset_helpers import get_features_description
         return get_features_description()
 
-    def get_setup_batch_fn(self, movie_id_lookup):
-        from gru4rec.dataset_helpers import get_setup_batch_fn
-        return get_setup_batch_fn(movie_id_lookup)
+    def get_parse_sample_fn(self, features_description, movie_id_lookup):
+        from gru4rec.dataset_helpers import get_parse_sample_fn
+        return get_parse_sample_fn(features_description, movie_id_lookup)
 
     def build_model(self, data):
         from gru4rec.gru4rec_model import Gru4RecModel
         return Gru4RecModel(data.vocab_size, **self.to_dict())
+
+    def get_special_tokens(self):
+      return []
 
     @property
     def label_column(self):

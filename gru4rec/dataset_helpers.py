@@ -12,11 +12,15 @@ def get_features_description() \
     }
 
 
-def get_setup_batch_fn(movie_id_lookup: tf.keras.layers.StringLookup):
-    def _setup_batch(x):
+def get_parse_sample_fn(
+  features_description,
+  movie_id_lookup: tf.keras.layers.StringLookup
+):
+    def _parse_sample(example_proto):
+        x = tf.io.parse_single_example(example_proto, features_description)
         return {
             "label": movie_id_lookup(tf.strings.as_string(x["label"])),
             "input_ids": movie_id_lookup(tf.strings.as_string(x["input_ids"])),
             "input_mask": x["input_mask"]
         }
-    return _setup_batch
+    return _parse_sample

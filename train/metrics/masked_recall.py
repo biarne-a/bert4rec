@@ -26,7 +26,7 @@ class MaskedRecall(keras.metrics.Metric):
             be broadcastable to `y_true`.
         """
         y_true = tf.cast(y_true, dtype=tf.int32)
-        # y_true = tf.expand_dims(y_true, axis=-1)
+        y_true = tf.expand_dims(y_true, axis=-1)
         top_indices = tf.math.top_k(y_pred, k=self._k).indices
         match = y_true == top_indices
         recall_k = tf.cast(match, dtype=tf.float32)

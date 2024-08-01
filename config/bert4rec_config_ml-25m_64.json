@@ -11,5 +11,8 @@
   "initializer_range": 0.02,
   "nb_max_masked_ids_per_seq": 20,
   "batch_size": 256,
-  "learning_rate": 1e-3
+  "learning_rate": 1e-3,
+  "nb_train": 2753718,
+  "nb_val": 162407,
+  "nb_test": 162407
 }

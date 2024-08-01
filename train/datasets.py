@@ -70,47 +70,46 @@ def get_data(config: Config):
     val_ds = _get_dataset_from_files(config, "val")
     test_ds = _get_dataset_from_files(config, "test")
 
-    movie_id_vocab = list(unique_train_movie_id_counts.keys()) #+ ["[MASK]"]
+    movie_id_vocab = (
+      list(unique_train_movie_id_counts.keys()) + 
+      config.model_config.get_special_tokens()
+    )
     movie_id_lookup = tf.keras.layers.StringLookup(vocabulary=movie_id_vocab)
     reverse_movie_id_lookup = tf.keras.layers.StringLookup(vocabulary=movie_id_vocab, invert=True)
 
-    def _get_parse_function(features_description):
-        def _parse_function(example_proto):
-            return tf.io.parse_single_example(example_proto, features_description)
-        return _parse_function
-
     train_features_description = config.model_config.get_train_features_description()
     val_and_test_features_description = config.model_config.get_val_and_test_features_description()
-    train_parse_function = _get_parse_function(train_features_description)
-    val_and_test_parse_function = _get_parse_function(val_and_test_features_description)
 
-    nb_train = 21_464_749
-    nb_val = 162_407
-    nb_test = 162_407
+    train_parse_fn = config.model_config.get_parse_sample_fn(
+      train_features_description, movie_id_lookup
+    )
+    val_and_test_parse_fn = config.model_config.get_parse_sample_fn(
+      val_and_test_features_description, movie_id_lookup
+    )
+
+    nb_train = config.model_config.nb_train
+    nb_val = config.model_config.nb_val
+    nb_test = config.model_config.nb_test
 
     nb_train_batches = nb_train // config.batch_size
     nb_val_batches = nb_val // config.batch_size
     nb_test_batches = nb_test // config.batch_size
 
-    setup_batch_fn = config.model_config.get_setup_batch_fn(movie_id_lookup)
     train_ds = (
-      train_ds.map(train_parse_function)
+      train_ds.map(train_parse_fn)
               .batch(config.batch_size)
-              .map(setup_batch_fn)
               .take(nb_train_batches)
               .repeat()
     )
     val_ds = (
-        val_ds.map(val_and_test_parse_function)
+        val_ds.map(val_and_test_parse_fn)
               .batch(config.batch_size)
-              .map(setup_batch_fn)
               .take(nb_val_batches)
               .repeat()
     )
     test_ds = (
-        test_ds.map(val_and_test_parse_function)
+        test_ds.map(val_and_test_parse_fn)
                .batch(config.batch_size)
-               .map(setup_batch_fn)
                .take(nb_test_batches)
                .repeat()
     )

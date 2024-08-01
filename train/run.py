@@ -48,10 +48,10 @@ def run_training(config: Config):
     save_filepath = _get_model_save_filepath(config)
     history = model.fit(
         x=data.train_ds,
-        epochs=1_000,
-        steps_per_epoch=data.nb_train_batches,
+        epochs=1,#1_000,
+        steps_per_epoch=3,#data.nb_train_batches,
         validation_data=data.val_ds,
-        validation_steps=data.nb_val_batches,
+        validation_steps=3,#data.nb_val_batches,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir="logs", update_freq=100),
             tf.keras.callbacks.EarlyStopping(monitor="val_recall_at_10", mode="max", patience=2),

@@ -16,6 +16,9 @@ class Bert4RecConfig(ModelConfig):
         attention_dropout=0.1,
         initializer_range=0.02,
         nb_max_masked_ids_per_seq=20,
+        nb_train=2753718,
+        nb_val=162407,
+        nb_test=162407
     ):
         """
         Builds a BertConfig.
@@ -41,6 +44,9 @@ class Bert4RecConfig(ModelConfig):
         self.attention_dropout = attention_dropout
         self.initializer_range = initializer_range
         self.nb_max_masked_ids_per_seq = nb_max_masked_ids_per_seq
+        self.nb_train = nb_train
+        self.nb_val = nb_val
+        self.nb_test = nb_test
 
     @classmethod
     def from_dict(cls, json_object):
@@ -62,18 +68,26 @@ class Bert4RecConfig(ModelConfig):
 
         return get_features_description(self, nb_max_masked_ids_per_seq=1)
 
-    def get_setup_batch_fn(self, movie_id_lookup):
-        from bert4rec.dataset_helpers import get_setup_batch_fn
+    def get_parse_sample_fn(self, features_description, movie_id_lookup):
+        from bert4rec.dataset_helpers import get_parse_sample_fn
 
-        return get_setup_batch_fn(movie_id_lookup)
+        return get_parse_sample_fn(features_description, movie_id_lookup)
 
     def build_model(self, data):
         from bert4rec.bert4rec_model import BERT4RecModel
 
         bert_config = self.to_dict()
         bert_config.pop("nb_max_masked_ids_per_seq")
+        bert_config.pop("nb_train")
+        bert_config.pop("nb_val")
+        bert_config.pop("nb_test")
+
         return BERT4RecModel(data.vocab_size, **bert_config)
+
+    def get_special_tokens(self):
+      return ["[MASK]"]
 
     @property
     def label_column(self):
         return "masked_lm_ids"
+

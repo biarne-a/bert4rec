@@ -21,6 +21,7 @@ class BERT4RecModel(tf.keras.Model):
                  **kwargs):
         super().__init__(name=name)
         self._vocab_size = vocab_size
+        self._config = kwargs
         self.encoder = Bert4RecEncoder(vocab_size, **kwargs)
         _ = self.encoder(self.encoder.inputs)
         self.masked_lm = MaskedLM(
@@ -40,18 +41,22 @@ class BERT4RecModel(tf.keras.Model):
         masked_lm_positions = inputs["masked_lm_positions"]
         return self.masked_lm(sequence_output, masked_lm_positions)
 
-    # @tf.function(input_signature=step_signature)
+    @tf.function(input_signature=step_signature)
     def train_step(self, inputs):
         y_true = inputs["masked_lm_ids"]
         sample_weight = inputs["masked_lm_weights"]
         with tf.GradientTape() as tape:
             y_pred = self(inputs, training=True)
-            loss = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
+            loss = self.compute_loss(inputs, y_true, y_pred, training=True)
 
-        self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
+        gradients = tape.gradient(loss, self.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
-        return {m.name: m.result() for m in self.metrics}
+        metric_values = {m.name: m.result() for m in self.metrics}
+        metric_values.pop("loss")
+        metric_values["fixed_loss"] = loss
+        return metric_values
 
     @tf.function(input_signature=step_signature)
     def test_step(self, inputs):
@@ -59,7 +64,22 @@ class BERT4RecModel(tf.keras.Model):
         sample_weight = inputs["masked_lm_weights"]
         y_pred = self(inputs, training=False)
 
-        _ = self.compiled_loss(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
+        loss = self.compute_loss(inputs, y_true, y_pred, training=False)
         self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
-        return {m.name: m.result() for m in self.metrics}
+        metric_values = {m.name: m.result() for m in self.metrics}
+        metric_values.pop("loss")
+        metric_values["fixed_loss"] = loss
+        return metric_values
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "vocab_size": self._vocab_size,
+        })
+        config.update(**self._config)
+        return config
+
+    @classmethod
+    def from_config(cls, config, custom_object=None):
+        return cls(**config)
