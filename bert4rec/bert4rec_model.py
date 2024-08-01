@@ -22,12 +22,16 @@ class BERT4RecModel(tf.keras.Model):
         super().__init__(name=name)
         self._vocab_size = vocab_size
         self._config = kwargs
-        self.encoder = Bert4RecEncoder(vocab_size, **kwargs)
+        self._mlm_activation = mlm_activation
+        self._mlm_initializer = mlm_initializer
+
+    def build(self, input_shape):
+        self.encoder = Bert4RecEncoder(self._vocab_size, **self._config)
         _ = self.encoder(self.encoder.inputs)
         self.masked_lm = MaskedLM(
             self.encoder.get_embedding_table(),
-            activation=mlm_activation,
-            initializer=mlm_initializer,
+            activation=self._mlm_activation,
+            initializer=self._mlm_initializer,
             name="masked_lm_predictions"
         )
 

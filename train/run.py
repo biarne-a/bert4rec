@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from config.config import Config
 from train.metrics import MaskedRecall, MaskedMeanAveragePrecision
-from train.datasets import get_data
+from train.datasets import get_data, Data
 from train.save_results import save_history, save_predictions
 
 
@@ -27,8 +27,22 @@ def set_seed():
     os.environ["PYTHONHASHSEED"] = str(Config.SEED)
 
 
-def _get_model_save_filepath(config: Config) -> str:
-    return f"{config.results_dir}/model.keras"
+def _get_model_local_save_filepath(config: Config) -> str:
+    local_savedir = f"data/results/{config.dataset_name}"
+    os.makedirs(local_savedir, exist_ok=True)
+    return f"{local_savedir}/model.weights.h5"
+
+
+def _compile_model(model, config):
+  model.compile(
+      optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
+      loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+      weighted_metrics=[
+          MaskedRecall(k=10),
+          MaskedMeanAveragePrecision(k=10)
+      ],
+      run_eagerly=_debugger_is_active(),
+  )
 
 
 def run_training(config: Config):
@@ -36,39 +50,42 @@ def run_training(config: Config):
 
     data = get_data(config)
     model = config.model_config.build_model(data)
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
-        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        weighted_metrics=[
-            MaskedRecall(k=10),
-            MaskedMeanAveragePrecision(k=10)
-        ],
-        run_eagerly=_debugger_is_active(),
-    )
-    save_filepath = _get_model_save_filepath(config)
+    _compile_model(model, config)
+    local_save_filepath = _get_model_local_save_filepath(config)
     history = model.fit(
         x=data.train_ds,
-        epochs=1,#1_000,
-        steps_per_epoch=3,#data.nb_train_batches,
+        epochs=1_000,
+        steps_per_epoch=data.nb_train_batches,
         validation_data=data.val_ds,
-        validation_steps=3,#data.nb_val_batches,
+        validation_steps=data.nb_val_batches,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir="logs", update_freq=100),
             tf.keras.callbacks.EarlyStopping(monitor="val_recall_at_10", mode="max", patience=2),
-            tf.keras.callbacks.ModelCheckpoint(save_filepath, monitor="val_recall_at_10", mode="max", save_best_only=True),
+            tf.keras.callbacks.ModelCheckpoint(
+              local_save_filepath, monitor="val_recall_at_10", mode="max", 
+              save_best_only=True, save_weights_only=True, verbose=2
+            ),
         ],
         verbose=1,
     )
+    distant_save_filepath = f"{config.results_dir}/model.weights.h5"
+    if local_save_filepath != distant_save_filepath:
+      tf.io.gfile.copy(
+        local_save_filepath, distant_save_filepath, overwrite=True
+    )
     save_history(history, config)
-    run_evaluation(config)
+    run_evaluation(config, data)
 
 
-def run_evaluation(config: Config):
+def run_evaluation(config: Config, data: Data):
     data = get_data(config)
-    save_filepath = _get_model_save_filepath(config)
-    model = tf.keras.models.load_model(save_filepath, custom_objects={
-        "MaskedRecall": MaskedRecall,
-        "MaskedMeanAveragePrecision": MaskedMeanAveragePrecision,
-    })
+    local_save_filepath = _get_model_local_save_filepath(config)
+    model = config.model_config.build_model(data)
+    _compile_model(model, config)
+    model.load_weights(local_save_filepath)
+    # model = tf.keras.models.load_model(save_filepath, custom_objects={
+    #     "MaskedRecall": MaskedRecall,
+    #     "MaskedMeanAveragePrecision": MaskedMeanAveragePrecision,
+    # })
     model.evaluate(data.test_ds, steps=data.nb_test_batches)
     save_predictions(config, data, model)
