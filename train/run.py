@@ -33,9 +33,26 @@ def _get_model_local_save_filepath(config: Config) -> str:
     return f"{local_savedir}/model.weights.h5"
 
 
-def _compile_model(model, config):
+def _build_optimizer(config, data):
+    leaarning_rate_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+        initial_learning_rate=config.learning_rate,
+        decay_steps=data.nb_train_batches * 40,
+        end_learning_rate=0.0,
+        power=1.0,
+        cycle=False,
+    )
+    opt = tf.keras.optimizers.Adam(learning_rate=leaarning_rate_schedule,
+                                   weight_decay=0.01,
+                                   epsilon=1e-6,
+                                   global_clipnorm=5.0)
+    opt.exclude_from_weight_decay(var_names=["LayerNorm", "layer_norm", "bias"])
+    return opt
+
+
+def _compile_model(model, config, data):
+  optimizer = _build_optimizer(config, data)
   model.compile(
-      optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
+      optimizer=optimizer,
       loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
       weighted_metrics=[
           MaskedRecall(k=10),
@@ -50,7 +67,7 @@ def run_training(config: Config):
 
     data = get_data(config)
     model = config.model_config.build_model(data)
-    _compile_model(model, config)
+    _compile_model(model, config, data)
     local_save_filepath = _get_model_local_save_filepath(config)
     history = model.fit(
         x=data.train_ds,
