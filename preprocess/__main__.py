@@ -22,7 +22,6 @@ def _sort_views_by_timestamp(group) -> List[int]:
 def _generate_examples_from_complete_sequences(
     complete_sequence: List[int],
     max_context_len: int,
-    get_slided_samples_fn,
     proportion_sliding_window: Optional[float] = None,
     sliding_window_step_size_override: Optional[int] = None,
 ):
@@ -53,55 +52,6 @@ def _generate_examples_from_complete_sequences(
         max_context_len, proportion_sliding_window, sliding_window_step_size_override
     )
 
-    return get_slided_samples_fn(complete_sequence, max_context_len, sliding_window_step_size)
-
-
-def _get_bert4rec_slided_samples(complete_sequence, max_context_len, sliding_window_step_size):
-    def _get_new_example(complete_sequence, start_idx, end_idx, sample_type):
-        input_ids = complete_sequence[start_idx:end_idx]
-        return {
-            "input_ids": input_ids,
-            "sample_type": sample_type,
-        }
-
-    examples = []
-
-    # The last 2 tokens of each sequence is for validation and testing
-    train_sequence_len = len(complete_sequence) - 2
-    train_complete_sequence = complete_sequence[:-2]
-
-    start_indexes = list(range(train_sequence_len - max_context_len, 0, -sliding_window_step_size))
-    start_indexes.append(0)
-    for start_idx in start_indexes[::-1]:
-        end_idx = start_idx + max_context_len
-        example = _get_new_example(train_complete_sequence, start_idx, end_idx, sample_type=0)
-        assert len(example["input_ids"]) >= 3
-        examples.append(example)
-
-    # Add validation sequence
-    end_idx_validation = len(complete_sequence) - 1
-    start_idx_validation = max(0, end_idx_validation - max_context_len)
-    example = _get_new_example(complete_sequence, start_idx_validation, end_idx_validation, sample_type=1)
-    assert len(example["input_ids"]) >= 4
-    examples.append(example)
-
-    # Add test sequence
-    end_idx_test = len(complete_sequence)
-    start_idx_test = max(0, end_idx_test - max_context_len)
-    example = _get_new_example(complete_sequence, start_idx_test, end_idx_test, sample_type=2)
-    if len(example["input_ids"]) < 5:
-        print(f"len(complete_sequence) = {len(complete_sequence)}")
-        print(f"len(example['input_ids']) = {len(example['input_ids'])}")
-        print(f"start_idx_test = {start_idx_test}")
-        print(f"end_idx_test = {start_idx_test+max_context_len}")
-        print(f"sequence = {complete_sequence[start_idx_test:(start_idx_test+max_context_len)]}")
-        raise Exception("WTF")
-    examples.append(example)
-
-    return examples
-
-
-def _get_gru4rec_slided_samples(complete_sequence, max_context_len, sliding_window_step_size):
     def _get_new_example(complete_sequence, start_idx, end_idx, sample_type):
         input_ids = complete_sequence[start_idx:end_idx]
         return {
@@ -315,7 +265,6 @@ def preprocess_with_dataflow(
     dataset_dir_version_name: str,
     max_context_len: int,
     implicit_rating_threshold: float,
-    get_slided_samples_fn,
     prepare_train_sample_fn,
     prepare_val_test_sample_fn,
     serialize_records_fn,
@@ -377,7 +326,6 @@ def preprocess_with_dataflow(
             beam.Map(
                 _generate_examples_from_complete_sequences,
                 max_context_len=max_context_len,
-                get_slided_samples_fn=get_slided_samples_fn,
                 proportion_sliding_window=proportion_sliding_window,
                 sliding_window_step_size_override=sliding_window_step_size_override
             )
@@ -435,17 +383,17 @@ if __name__ == "__main__":
     # BERT4REC preparation
     preprocess_with_dataflow(
         data_dir="gs://movie-lens-25m",
-        dataset_dir_version_name="bert4rec_dup10_05_slidprop",
+        dataset_dir_version_name="bert4rec_dup2_2_slidabs",
         max_context_len=200,
         implicit_rating_threshold=2.0,
-        get_slided_samples_fn=_get_bert4rec_slided_samples,
         prepare_train_sample_fn=_prepare_bert4rec_train_samples,
         prepare_val_test_sample_fn=_prepare_bert4rec_val_test_sample,
         serialize_records_fn=_serialize_bert4rec_tfrecords,
-        duplication_factor=10,
+        duplication_factor=2,
         nb_max_masked_ids_per_seq=20,
         mask_ratio=0.2,
-        proportion_sliding_window=0.5
+        # proportion_sliding_window=0.5,
+        sliding_window_step_size_override=1
     )
 
     # GRU4REC preparation
@@ -454,7 +402,6 @@ if __name__ == "__main__":
     #     dataset_dir_version_name="gru4rec_full_slide",
     #     max_context_len=200,
     #     implicit_rating_threshold=2.0,
-    #     get_slided_samples_fn=_get_gru4rec_slided_samples,
     #     prepare_train_sample_fn=_prepare_gru4rec_samples,
     #     prepare_val_test_sample_fn=_prepare_gru4rec_samples,
     #     serialize_records_fn=_serialize_gru4rec_tfrecords,
