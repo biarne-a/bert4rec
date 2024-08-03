@@ -98,11 +98,7 @@ def run_evaluation(config: Config, data: Data):
     data = get_data(config)
     local_save_filepath = _get_model_local_save_filepath(config)
     model = config.model_config.build_model(data)
-    _compile_model(model, config)
+    _compile_model(model, config, data)
     model.load_weights(local_save_filepath)
-    # model = tf.keras.models.load_model(save_filepath, custom_objects={
-    #     "MaskedRecall": MaskedRecall,
-    #     "MaskedMeanAveragePrecision": MaskedMeanAveragePrecision,
-    # })
     model.evaluate(data.test_ds, steps=data.nb_test_batches)
     save_predictions(config, data, model)
