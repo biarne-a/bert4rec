@@ -41,6 +41,7 @@ def get_parse_sample_fn(
             indices=tf.reshape(masked_lm_positions, (-1, 1)),
             updates=tf.repeat(["[MASK]"], nb_tokens_to_mask)
         )
+        x["input_ids"] = movie_id_lookup(input_ids)
 
         if training and nb_tokens_to_mask < 20:
             padding_idx = tf.constant([[0]])
@@ -48,8 +49,7 @@ def get_parse_sample_fn(
             paddings = tf.concat([padding_idx, paddings], axis=1)
             masked_lm_positions = tf.pad(masked_lm_positions, paddings)
         masked_lm_ids = tf.gather(x["input_ids"], masked_lm_positions)
-
-        x["input_ids"] = movie_id_lookup(input_ids)
+        x["masked_lm_positions"] = masked_lm_positions
         x["masked_lm_ids"] = movie_id_lookup(tf.strings.as_string(masked_lm_ids))
         return x
 
