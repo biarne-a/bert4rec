@@ -68,10 +68,14 @@ class Bert4RecConfig(ModelConfig):
 
         return get_features_description(self, nb_max_masked_ids_per_seq=1)
 
-    def get_parse_sample_fn(self, features_description, movie_id_lookup):
+    def get_parse_sample_fn(
+      self, features_description, movie_id_lookup, training: bool
+    ):
         from bert4rec.dataset_helpers import get_parse_sample_fn
 
-        return get_parse_sample_fn(features_description, movie_id_lookup)
+        return get_parse_sample_fn(
+          features_description, movie_id_lookup, training
+        )
 
     def build_model(self, data):
         from bert4rec.bert4rec_model import BERT4RecModel

@@ -36,7 +36,9 @@ class Gru4RecConfig(ModelConfig):
         from gru4rec.dataset_helpers import get_features_description
         return get_features_description()
 
-    def get_parse_sample_fn(self, features_description, movie_id_lookup):
+    def get_parse_sample_fn(
+      self, features_description, movie_id_lookup, training: bool
+    ):
         from gru4rec.dataset_helpers import get_parse_sample_fn
         return get_parse_sample_fn(features_description, movie_id_lookup)
 

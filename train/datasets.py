@@ -1,5 +1,6 @@
 import re
 from typing import Dict
+from numpy import False_
 
 import tensorflow as tf
 
@@ -81,10 +82,10 @@ def get_data(config: Config):
     val_and_test_features_description = config.model_config.get_val_and_test_features_description()
 
     train_parse_fn = config.model_config.get_parse_sample_fn(
-      train_features_description, movie_id_lookup
+      train_features_description, movie_id_lookup, training=True
     )
     val_and_test_parse_fn = config.model_config.get_parse_sample_fn(
-      val_and_test_features_description, movie_id_lookup
+      val_and_test_features_description, movie_id_lookup, training=False
     )
 
     nb_train = config.model_config.nb_train
