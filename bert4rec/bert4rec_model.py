@@ -16,7 +16,7 @@ class BERT4RecModel(tf.keras.Model):
     def __init__(self,
                  vocab_size: int,
                  mlm_activation="gelu",
-                 mlm_initializer="glorot_uniform",
+                 mlm_initializer="TruncatedNormal",
                  name: str = "bert4rec",
                  **kwargs):
         super().__init__(name=name)
@@ -32,6 +32,7 @@ class BERT4RecModel(tf.keras.Model):
             self.encoder.get_embedding_table(),
             activation=self._mlm_activation,
             initializer=self._mlm_initializer,
+            initializer_range=self._config["initializer_range"],
             name="masked_lm_predictions"
         )
 

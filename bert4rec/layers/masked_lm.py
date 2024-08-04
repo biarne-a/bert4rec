@@ -27,13 +27,17 @@ class MaskedLM(tf.keras.layers.Layer):
                embedding_table,
                activation=None,
                initializer='glorot_uniform',
+               initializer_range: float = 0.02,
                output='logits',
                name=None,
                **kwargs):
     super().__init__(name=name, **kwargs)
     self.embedding_table = embedding_table
     self.activation = activation
-    self.initializer = tf.keras.initializers.get(initializer)
+    self.initializer = tf.keras.initializers.get({
+        "class_name": str(initializer),
+        "config": {"stddev": initializer_range}
+    })
 
     if output not in ('predictions', 'logits'):
       raise ValueError(
