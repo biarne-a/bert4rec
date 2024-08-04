@@ -41,8 +41,7 @@ class BERT4RecModel(tf.keras.Model):
             "input_ids": inputs["input_ids"],
             "input_mask": inputs["input_mask"],
         }
-        encoder_outputs = self.encoder(encoder_inputs, training=training)
-        sequence_output = encoder_outputs["sequence_output"]
+        sequence_output = self.encoder(encoder_inputs, training=training)
         masked_lm_positions = inputs["masked_lm_positions"]
         return self.masked_lm(sequence_output, masked_lm_positions)
 
@@ -52,7 +51,7 @@ class BERT4RecModel(tf.keras.Model):
         sample_weight = inputs["masked_lm_weights"]
         with tf.GradientTape() as tape:
             y_pred = self(inputs, training=True)
-            loss = self.compute_loss(inputs, y_true, y_pred, training=True)
+            loss = self.compute_loss(inputs, y_true, y_pred, sample_weight=sample_weight)
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -69,7 +68,7 @@ class BERT4RecModel(tf.keras.Model):
         sample_weight = inputs["masked_lm_weights"]
         y_pred = self(inputs, training=False)
 
-        loss = self.compute_loss(inputs, y_true, y_pred, training=False)
+        loss = self.compute_loss(inputs, y_true, y_pred, sample_weight=sample_weight)
         self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
         metric_values = {m.name: m.result() for m in self.metrics}

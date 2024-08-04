@@ -155,12 +155,6 @@ class Bert4RecEncoder(tf.keras.layers.Layer):
                 name='transformer_layer_%d' % i)
             self._transformer_layers.append(layer)
 
-        self._pooler_layer = tf.keras.layers.Dense(
-            units=hidden_size,
-            activation='tanh',
-            kernel_initializer=utils.clone_initializer(initializer),
-            name='pooler_transform')
-
         self._config = {
             'vocab_size': vocab_size,
             'hidden_size': hidden_size,
@@ -231,14 +225,7 @@ class Bert4RecEncoder(tf.keras.layers.Layer):
             encoder_outputs.append(x)
 
         last_encoder_output = encoder_outputs[-1]
-        first_token_tensor = last_encoder_output[:, 0, :]
-        pooled_output = self._pooler_layer(first_token_tensor)
-
-        return dict(
-            sequence_output=encoder_outputs[-1],
-            pooled_output=pooled_output,
-            encoder_outputs=encoder_outputs
-        )
+        return last_encoder_output
 
     def get_embedding_table(self):
         return self._embedding_layer.embeddings
