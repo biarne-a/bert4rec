@@ -1,0 +1,18 @@
+{
+  "model_config_name": "Bert4RecConfig",
+  "hidden_size": 64,
+  "num_layers": 2,
+  "num_attention_heads": 2,
+  "max_sequence_length": 200,
+  "inner_dim": 256,
+  "inner_activation": "gelu",
+  "output_dropout": 0.2,
+  "attention_dropout": 0.2,
+  "initializer_range": 0.02,
+  "nb_max_masked_ids_per_seq": 40,
+  "batch_size": 256,
+  "learning_rate": 1e-4,
+  "nb_train": 144265,
+  "nb_val": 6040,
+  "nb_test": 6040
+}
