@@ -1,9 +1,5 @@
-from typing import Dict
-
 import tensorflow as tf
 from tensorflow import keras
-
-from train.metrics import MaskedRecall
 
 
 step_signature = [{
@@ -23,7 +19,6 @@ class Gru4RecModel(keras.models.Model):
         self._movie_id_embedding = tf.keras.layers.Embedding(vocab_size + 1, hidden_size)
         self._dropout_emb = tf.keras.layers.Dropout(dropout_p_embed)
         self._gru_layer = tf.keras.layers.GRU(hidden_size, return_sequences=True, recurrent_dropout=dropout_p_hidden)
-        self._recall_metric = MaskedRecall(k=10)
 
     def call(self, inputs, training=False):
         ctx_movie_emb = self._movie_id_embedding(inputs["input_ids"])

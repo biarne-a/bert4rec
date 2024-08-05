@@ -44,7 +44,11 @@ class Gru4RecConfig(ModelConfig):
 
     def build_model(self, data):
         from gru4rec.gru4rec_model import Gru4RecModel
-        return Gru4RecModel(data.vocab_size, **self.to_dict())
+        gru4rec_config = self.to_dict()
+        gru4rec_config.pop("nb_train")
+        gru4rec_config.pop("nb_val")
+        gru4rec_config.pop("nb_test")
+        return Gru4RecModel(data.vocab_size, **gru4rec_config)
 
     def get_special_tokens(self):
       return []
