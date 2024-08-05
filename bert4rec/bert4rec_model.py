@@ -55,12 +55,20 @@ class BERT4RecModel(tf.keras.Model):
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
-        metric_values = {m.name: m.result() for m in self.metrics}
-        metric_values.pop("loss")
-        metric_values["fixed_loss"] = loss
-        return metric_values
+        return self._update_metrics(y_true, y_pred, sample_weight, loss)
+
+    def _update_metrics(self, y_true, y_pred, sample_weight, loss):
+        # Update the metrics.
+        # Metrics are configured in `compile()`.
+        for metric in self.metrics:
+            if metric.name == "loss":
+                metric.update_state(loss)
+            else:
+                metric.update_state(y_true, y_pred, sample_weight=sample_weight)
+        # Return a dict mapping metric names to current value.
+        # Note that it will include the loss (tracked in self.metrics).
+        return {m.name: m.result() for m in self.metrics}
 
     @tf.function(input_signature=step_signature)
     def test_step(self, inputs):
@@ -69,12 +77,8 @@ class BERT4RecModel(tf.keras.Model):
         y_pred = self(inputs, training=False)
 
         loss = self.compute_loss(inputs, y_true, y_pred, sample_weight=sample_weight)
-        self.compiled_metrics.update_state(y_true, y_pred, sample_weight=sample_weight)
 
-        metric_values = {m.name: m.result() for m in self.metrics}
-        metric_values.pop("loss")
-        metric_values["fixed_loss"] = loss
-        return metric_values
+        return self._update_metrics(y_true, y_pred, sample_weight, loss)
 
     def get_config(self):
         config = super().get_config()
