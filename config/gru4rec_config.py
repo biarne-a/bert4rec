@@ -8,6 +8,9 @@ class Gru4RecConfig(ModelConfig):
         self,
         hidden_size=768,
         inner_dim=3072,
+        nb_train=988129,
+        nb_val=6040,
+        nb_test=6040
     ):
         """
         Builds a BertConfig.
@@ -17,6 +20,9 @@ class Gru4RecConfig(ModelConfig):
         """
         self.hidden_size = hidden_size
         self.inner_dim = inner_dim
+        self.nb_train = nb_train
+        self.nb_val = nb_val
+        self.nb_test = nb_test
 
     @classmethod
     def from_dict(cls, json_object):
