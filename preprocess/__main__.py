@@ -60,26 +60,26 @@ def _generate_examples_from_complete_sequences(
         }
 
     examples = []
+    complete_sequence_len = len(complete_sequence)
 
-    # Add train sequences. The last 2 tokens of each sequence is for validation and testing
-    sequence_len = len(complete_sequence)
-    end_indexes = list(range(1, sequence_len - 1, sliding_window_step_size))
-    start_indexes = [max(0, idx - max_context_len) for idx in end_indexes]
-    for start_idx, end_idx in zip(start_indexes, end_indexes):
-        example = _get_new_example(complete_sequence, start_idx, end_idx, sample_type=0)
-        examples.append(example)
+    # Add test sequence
+    end_idx_test = complete_sequence_len
+    start_idx_test = max(0, end_idx_test - max_context_len)
+    example = _get_new_example(complete_sequence, start_idx_test, end_idx_test, sample_type=2)
+    examples.append(example)
 
     # Add validation sequence
-    end_idx_validation = len(complete_sequence) - 1
+    end_idx_validation = complete_sequence_len - 1
     start_idx_validation = max(0, end_idx_validation - max_context_len)
     example = _get_new_example(complete_sequence, start_idx_validation, end_idx_validation, sample_type=1)
     examples.append(example)
 
-    # Add test sequence
-    end_idx_test = len(complete_sequence)
-    start_idx_test = max(0, end_idx_test - max_context_len)
-    example = _get_new_example(complete_sequence, start_idx_test, end_idx_test, sample_type=2)
-    examples.append(example)
+    # Add train sequences. The last 2 tokens of each sequence is for validation and testing
+    end_indexes = list(range(end_idx_validation - 1, 0, -sliding_window_step_size))
+    start_indexes = [max(0, idx - max_context_len) for idx in end_indexes]
+    for start_idx, end_idx in zip(start_indexes, end_indexes):
+        example = _get_new_example(complete_sequence, start_idx, end_idx, sample_type=0)
+        examples.append(example)
 
     return examples
 
@@ -298,7 +298,7 @@ def preprocess_with_dataflow(
         project="concise-haven-277809",
         staging_location="gs://movie-lens-25m/beam/stg",
         temp_location="gs://movie-lens-25m/beam/tmp",
-        job_name="ml-25m-preprocess",
+        job_name="ml-25m-preprocess2",
         num_workers=4,
         region="northamerica-northeast2",
         sdk_container_image="northamerica-northeast1-docker.pkg.dev/concise-haven-277809/biarnes-registry/bert4rec-preprocess",
@@ -307,9 +307,9 @@ def preprocess_with_dataflow(
     with beam.Pipeline(options=options) as pipeline:
         raw_ratings = (
             pipeline
-            | "Read ratings CSV" >> beam.io.textio.ReadFromText(f"{data_dir}/ratings.csv", skip_header_lines=1)
+            | "Read ratings CSV" >> beam.io.textio.ReadFromText(f"{data_dir}/ml-1m/ratings.csv", skip_header_lines=0)
             | "Transform row to rating dict" >> beam.Map(_transform_to_rating)
-            | "Filter low ratings (keep implicit positives)" >> beam.Filter(lambda x: x["rating"] > implicit_rating_threshold)
+            # | "Filter low ratings (keep implicit positives)" >> beam.Filter(lambda x: x["rating"] > implicit_rating_threshold)
         )
 
         user_complete_sequences = (
@@ -381,29 +381,29 @@ def preprocess_with_dataflow(
 
 if __name__ == "__main__":
     # BERT4REC preparation
-    preprocess_with_dataflow(
-        data_dir="gs://movie-lens-25m",
-        dataset_dir_version_name="bert4rec_dup2_2_slidabs",
-        max_context_len=200,
-        implicit_rating_threshold=2.0,
-        prepare_train_sample_fn=_prepare_bert4rec_train_samples,
-        prepare_val_test_sample_fn=_prepare_bert4rec_val_test_sample,
-        serialize_records_fn=_serialize_bert4rec_tfrecords,
-        duplication_factor=2,
-        nb_max_masked_ids_per_seq=20,
-        mask_ratio=0.2,
-        # proportion_sliding_window=0.5,
-        sliding_window_step_size_override=1
-    )
-
-    # GRU4REC preparation
     # preprocess_with_dataflow(
     #     data_dir="gs://movie-lens-25m",
-    #     dataset_dir_version_name="gru4rec_full_slide",
+    #     dataset_dir_version_name="bert4rec_ml1m_max40_dup10_05_slidprop",
     #     max_context_len=200,
     #     implicit_rating_threshold=2.0,
-    #     prepare_train_sample_fn=_prepare_gru4rec_samples,
-    #     prepare_val_test_sample_fn=_prepare_gru4rec_samples,
-    #     serialize_records_fn=_serialize_gru4rec_tfrecords,
-    #     sliding_window_step_size_override=1
+    #     prepare_train_sample_fn=_prepare_bert4rec_train_samples,
+    #     prepare_val_test_sample_fn=_prepare_bert4rec_val_test_sample,
+    #     serialize_records_fn=_serialize_bert4rec_tfrecords,
+    #     duplication_factor=10,
+    #     nb_max_masked_ids_per_seq=40,
+    #     mask_ratio=0.2,
+    #     proportion_sliding_window=0.5,
+    #     # sliding_window_step_size_override=1
     # )
+
+    # GRU4REC preparation
+    preprocess_with_dataflow(
+        data_dir="gs://movie-lens-25m",
+        dataset_dir_version_name="gru4rec_ml1m_full_slide",
+        max_context_len=200,
+        implicit_rating_threshold=2.0,
+        prepare_train_sample_fn=_prepare_gru4rec_samples,
+        prepare_val_test_sample_fn=_prepare_gru4rec_samples,
+        serialize_records_fn=_serialize_gru4rec_tfrecords,
+        sliding_window_step_size_override=1
+    )
